@@ -73,7 +73,8 @@
         "charliermarsh.ruff",
         "tamasfe.even-better-toml",
         "esbenp.prettier-vscode",
-        "formulahendry.code-runner"
+        "formulahendry.code-runner",
+        "proflead.invisible-ai-chart-detector"
       ],
       // Add custom VS Code settings.
       "settings": {

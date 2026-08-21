@@ -24,7 +24,7 @@ __pycache__/
 *.so
 
 # Virtual environments (if created locally or outside the container)
-.venv/
+.venv
 venv/
 ENV/
 env/

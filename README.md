@@ -4,9 +4,6 @@ Local Instagram & Markdown knowledge base with semantic search and AI-powered en
 
 > Works with Instagram (posts in video and carrosel) - Index your research context searchable knowledge base.
 
-
-
-
 ## Sketch commands
 
 uv sync
@@ -27,3 +24,12 @@ uv run src/app/main.py
 
 uv audit
 uv audit --preview-features audit-command
+
+uv run bandit -r src/
+uv run bandit -c pyproject.toml -r .
+
+
+uv add --dev bandit pip-audit
+uv run pre-commit clean
+uv run pre-commit install
+uv run pre-commit run --all-files

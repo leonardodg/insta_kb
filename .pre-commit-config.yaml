@@ -18,3 +18,19 @@ repos:
     rev: v1.1.409
     hooks:
       - id: pyright
+
+  - repo: https://github.com/PyCQA/bandit
+    rev: "1.8.3"
+    hooks:
+      - id: bandit
+        args: ["-c", "pyproject.toml"]
+        additional_dependencies: ["bandit[toml]"]
+
+  - repo: local
+    hooks:
+      - id: pip-audit
+        name: pip-audit
+        entry: uv run --frozen --no-sync pip-audit --local --skip-editable
+        language: system
+        pass_filenames: false
+        always_run: true
