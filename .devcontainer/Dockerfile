@@ -3,8 +3,7 @@ FROM python:3.14-slim-bookworm AS development
 ENV PYTHONUNBUFFERED=1 \
   UV_COMPILE_BYTECODE=1 \
   UV_LINK_MODE=copy \
-  UV_PYTHON_PREFERENCE=only-managed \
-  UV_NO_DEV=1
+  UV_PYTHON_PREFERENCE=only-managed
 
 # Expose the venv to non-root user and make it the default python environment
 ENV VIRTUAL_ENV=/app/.venv
