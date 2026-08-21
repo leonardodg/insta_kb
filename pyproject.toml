@@ -1,0 +1,72 @@
+[project]
+name = "app"
+version = "0.1.0"
+description = "Local Instagram & Markdown knowledge base with semantic search and AI-powered enrichment."
+readme = "README.md"
+license = { text = "MIT" }
+authors = [{ name = "leonardodg", email = "leonardodg@msn.com" }]
+requires-python = ">=3.14"
+dependencies = [
+    "fastapi[standard]>=0.141.1",
+    "pydantic>=2.13.4",
+    "pydantic-settings>=2.15.0",
+    "python-dotenv>=1.2.3",
+]
+
+[project.scripts]
+app = "app:main"
+
+[build-system]
+requires = ["uv_build>=0.12.5,<0.13.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pre-commit>=4.6.2",
+    "pyright>=1.1.411",
+    "ruff>=0.9.0",
+]
+
+[tool.setuptools.package-find]
+where = "src"
+
+[tool.uv]
+default-groups = ["dev"]
+
+# =========================
+# LINTING & FORMATTING (Ruff)
+# =========================
+
+[tool.ruff]
+# Define a compatibilidade mínima com Python 3.14
+target-version = "py314"
+line-length = 88
+exclude = [
+    ".venv",
+    "venv",
+    "build",
+    "dist",
+    "__pycache__",
+    ".mypy_cache",
+    ".pytest_cache",
+]
+
+[tool.ruff.lint]
+# Melhores práticas: Ativa regras padrões, Flake8, Isort (organização de imports) e Pylint
+select = ["E", "F", "I", "W", "PL"]
+ignore = [
+    "PLR0913", # Permite mais de 5 argumentos em funções (comum em FastAPI)
+]
+
+[tool.ruff.lint.isort]
+# Garante que os imports do seu app fiquem separados de bibliotecas externas
+known-first-party = ["app", "src"]
+
+[tool.ruff.format]
+# Padrão Black/PEP 8 para formatação automática de código
+quote-style = "double"
+indent-style = "space"
+
+
+[tool.pyright]
+pythonVersion = "3.14"

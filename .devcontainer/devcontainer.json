@@ -1,0 +1,85 @@
+// See https://containers.dev/implementors/json_reference/ for configuration reference
+{
+  "name": "Local Instagram & Markdown knowledge base in Python -  By LeoDG",
+  "dockerComposeFile": "./docker-compose.yml",
+  "service": "python",
+  "workspaceFolder": "/app",
+  "remoteUser": "appuser",
+  "features": {
+    "ghcr.io/devcontainers/features/git:1": {},
+    "ghcr.io/devcontainers/features/common-utils:2": {
+      "installZsh": true,
+      "installOhMyZsh": true,
+      "installOhMyZshConfig": true,
+      "upgradePackages": true,
+      "installSsl": true,
+      "username": "devcontainer",
+      "userUid": "automatic",
+      "userGid": "automatic"
+    }
+  },
+
+  // Mounts are used to share configuration files and SSH keys between the host and the container.
+  "mounts": [
+    {
+      "source": "${localEnv:HOME}/.gitconfig",
+      "target": "/home/appuser/.gitconfig",
+      "type": "bind"
+    },
+    {
+      "source": "${localEnv:HOME}/.ssh",
+      "target": "/home/appuser/.ssh",
+      "type": "bind"
+    },
+    {
+      "source": "${localEnv:HOME}/.ssh/known_hosts",
+      "target": "/home/appuser/.ssh/known_hosts",
+      "type": "bind"
+    }
+  ],
+
+  // Use 'postCreateCommand' to run a simple notification after container creation.
+  // Avoid running sudo/chown here because the workspace is bind-mounted and
+  // postCreateCommand executes as the container user (not necessarily root).
+  "postCreateCommand": "echo 'Dev container ready -OK'",
+
+  // Ensure the virtualenv created at /opt/venv is available in the container PATH
+  "containerEnv": {
+    "VIRTUAL_ENV": "/app/.venv",
+    "HISTFILE": "/tmp/appuser.bash_history"
+  },
+
+  // Configure tool-specific properties.
+  "customizations": {
+    "vscode": {
+      // Add the IDs of extensions you want to install.
+      "extensions": [
+        "ms-azuretools.vscode-docker",
+        "mhutchie.git-graph",
+        "ms-python.python",
+        "ms-python.vscode-pylance",
+        "ryanluker.vscode-coverage-gutters",
+        "meezilla.json",
+        "eamodio.gitlens",
+        "emmanuelbeziat.vscode-great-icons",
+        "dongido.sync-env",
+        "yzhang.markdown-all-in-one",
+        "github.vscode-github-actions",
+        "foxundermoon.shell-format",
+        "shardulm94.trailing-spaces",
+        "github.vscode-pull-request-github",
+        "github.copilot",
+        "github.copilot-chat",
+        "charliermarsh.ruff",
+        "tamasfe.even-better-toml",
+        "esbenp.prettier-vscode",
+        "formulahendry.code-runner"
+      ],
+      // Add custom VS Code settings.
+      "settings": {
+        "terminal.integrated.shell.linux": "/bin/bash",
+        "terminal.integrated.defaultProfile.linux": "bash"
+      }
+    }
+  }
+}

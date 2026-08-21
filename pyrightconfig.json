@@ -1,0 +1,8 @@
+{
+  "include": ["src"],
+  "extraPaths": ["src"],
+  "exclude": ["**/node_modules", "**/__pycache__"],
+  "venvPath": ".",
+  "venv": ".venv",
+  "typeCheckingMode": "strict",
+}

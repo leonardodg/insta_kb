@@ -1,0 +1,17 @@
+.pgdata
+.rabbitmq
+.rabbitmqdata
+.venv
+__pycache__
+*.py[cod]
+.git
+.gitignore
+.env
+.env.*
+!.env-example
+dist
+build
+*.egg-info
+.pytest_cache
+.ruff_cache
+.mypy_cache

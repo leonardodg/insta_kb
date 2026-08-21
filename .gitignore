@@ -1,0 +1,61 @@
+# ==========================================
+# 1. Dev Container & VS Code Configuration
+# ==========================================
+# Keep .devcontainer/ tracked so team members share the same environment.
+# Only ignore local user-specific state/extensions generated at runtime.
+.devcontainer/local-state/
+.devcontainer/*.local.json
+
+# Ignore local VS Code settings if they conflict with shared workspace configs
+.vscode/settings.json
+.vscode/tasks.json
+.vscode/launch.json
+!.vscode/extensions.json
+
+# ==========================================
+# 2. Python Environment & Bytecode
+# ==========================================
+# Compiled Python files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Virtual environments (if created locally or outside the container)
+.venv/
+venv/
+ENV/
+env/
+
+# Pipenv, Poetry, and uv lock/environment artifacts
+.pipenv/
+.poetry/
+.uv/
+
+# ==========================================
+# 3. Testing, Linting, and Coverage
+# ==========================================
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+nosetests.xml
+coverage.xml
+*.cover
+.tox/
+.nox/
+
+# ==========================================
+# 4. OS & Environment Files
+# ==========================================
+.env
+.env.local
+.DS_Store
+Thumbs.db
+
+
+.rabbitmq
+.pgdata
