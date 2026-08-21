@@ -24,3 +24,6 @@ uv run ruff check src/ --fix
 uv run ruff format src/
 
 uv run src/app/main.py
+
+uv audit
+uv audit --preview-features audit-command
