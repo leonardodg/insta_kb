@@ -97,7 +97,7 @@ The difference here is infrastructure, not just surface area:
 |---|---|
 | **instagrapi** | Authenticated enumeration and download of saved posts (session-based, no password) |
 | **yt-dlp** | Fallback download path for public posts |
-| **faster-whisper** | Local, GPU-accelerated transcription with timestamps |
+| **faster-whisper** + **av 18.1.0** | Local, GPU-accelerated transcription with timestamps |
 
 ### Interfaces
 | Technology | Role |
