@@ -13,12 +13,75 @@ from typing import Any, Literal, NotRequired, Protocol, Required, TypedDict
 # ── (a) TypedDicts para os retornos mais indexados por string ──────────────
 
 
-class OkResult(TypedDict, total=False):
-    """Contrato genérico `{"ok": bool, ...}` — o retorno de 90% do repo."""
+class ErrResult(TypedDict):
+    """Ramificacao de erro uniforme `{"ok": False, "error": str}`.
 
-    ok: Required[bool]
+    TypedDict e fechado -- nao existe tipo generico de sucesso com chaves
+    "extras", entao cada fronteira declara o proprio par Ok/Err (audit F4a
+    aplicado nas fronteiras REST/MCP/RAG; ingest/llm permanecem
+    `dict[str, Any]`, registrado no HANDOFF como escopo restante).
+    """
+
+    ok: Literal[False]
     error: str
-    stage: str
+
+
+class SearchOk(TypedDict):
+    ok: Literal[True]
+    query: str
+    results: list[dict[str, Any]]
+
+
+class AskOk(TypedDict):
+    ok: Literal[True]
+    query: str
+    answer: str
+    sources: list[dict[str, Any]]
+
+
+class ReindexOk(TypedDict):
+    ok: Literal[True]
+    documents_reindexed: int
+
+
+class QueueStatusOk(TypedDict):
+    ok: Literal[True]
+    queue: str
+    ready: int
+    dead: int
+    consumers: int
+
+
+class ControlCommandOk(TypedDict):
+    ok: Literal[True]
+    command: str
+
+
+class ProgressOk(TypedDict):
+    ok: Literal[True]
+    last: list[dict[str, Any]]
+    documents_with_ig_pk: int
+
+
+class ExportSearchOk(TypedDict):
+    ok: Literal[True]
+    total: int
+    documents: list[dict[str, Any]]
+
+
+class ListDocumentsOk(TypedDict):
+    ok: Literal[True]
+    total: int
+    limit: int
+    offset: int
+    has_more: bool
+    documents: list[dict[str, Any]]
+
+
+class ExportDocumentsOk(TypedDict):
+    ok: Literal[True]
+    output_dir: str
+    files: list[dict[str, Any]]
 
 
 class ProcessResult(TypedDict, total=False):

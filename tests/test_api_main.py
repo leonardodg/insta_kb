@@ -157,13 +157,13 @@ def test_knowledge_search_endpoint_delegates(monkeypatch: pytest.MonkeyPatch):
     def fake_search(query: str, *, top_k: int) -> dict[str, Any]:
         captured["query"] = query
         captured["top_k"] = top_k
-        return {"ok": True, "results": []}
+        return {"ok": True, "query": query, "results": []}
 
     monkeypatch.setattr(api_main.knowledge, "search", fake_search)
     client = TestClient(api_main.app)
     resp = client.get("/knowledge/search", params={"query": "turbo lora"})
     assert resp.status_code == HTTP_OK
-    assert resp.json() == {"ok": True, "results": []}
+    assert resp.json() == {"ok": True, "query": "turbo lora", "results": []}
     assert captured["query"] == "turbo lora"
     assert captured["top_k"] == DEFAULT_TOP_K_SEARCH
 
@@ -174,7 +174,7 @@ def test_knowledge_ask_endpoint_delegates(monkeypatch: pytest.MonkeyPatch):
     def fake_ask(query: str, *, top_k: int) -> dict[str, Any]:
         captured["query"] = query
         captured["top_k"] = top_k
-        return {"ok": True, "answer": "..."}
+        return {"ok": True, "query": query, "answer": "...", "sources": []}
 
     monkeypatch.setattr(api_main.knowledge, "ask", fake_ask)
     client = TestClient(api_main.app)
@@ -182,7 +182,12 @@ def test_knowledge_ask_endpoint_delegates(monkeypatch: pytest.MonkeyPatch):
         "/knowledge/ask", params={"query": "o que é turbo lora?", "top_k": 2}
     )
     assert resp.status_code == HTTP_OK
-    assert resp.json() == {"ok": True, "answer": "..."}
+    assert resp.json() == {
+        "ok": True,
+        "query": "o que é turbo lora?",
+        "answer": "...",
+        "sources": [],
+    }
     assert captured["top_k"] == CUSTOM_TOP_K_ASK
 
 
@@ -251,13 +256,13 @@ def test_kb_export_search_endpoint_delegates(monkeypatch: pytest.MonkeyPatch):
         captured["query"] = query
         captured["ids"] = ids
         captured["limit"] = limit
-        return {"ok": True, "documents": []}
+        return {"ok": True, "total": 0, "documents": []}
 
     monkeypatch.setattr(api_main.knowledge, "export_search", fake_export_search)
     client = TestClient(api_main.app)
     resp = client.get("/knowledge/export/search", params={"query": "turbo"})
     assert resp.status_code == HTTP_OK
-    assert resp.json() == {"ok": True, "documents": []}
+    assert resp.json() == {"ok": True, "total": 0, "documents": []}
     assert captured["query"] == "turbo"
     assert captured["limit"] == DEFAULT_EXPORT_LIMIT
 

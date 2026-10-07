@@ -17,7 +17,9 @@ from typing import get_args, get_origin, get_type_hints
 def test_contracts_module_exists():
     from core import contracts  # noqa: PLC0415 -- RED é o ImportError
 
-    assert "ok" in contracts.OkResult.__annotations__
+    assert "error" in contracts.ErrResult.__annotations__
+    assert "results" in contracts.SearchOk.__annotations__
+    assert "ready" in contracts.QueueStatusOk.__annotations__
     assert "status" in contracts.ProcessResult.__annotations__
     assert "text" in contracts.DocBuilt.__annotations__
 

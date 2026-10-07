@@ -35,6 +35,18 @@ from typing import Any
 from fastmcp import FastMCP
 from pydantic import Field
 
+from core.contracts import (
+    AskOk,
+    ControlCommandOk,
+    ErrResult,
+    ExportDocumentsOk,
+    ExportSearchOk,
+    ListDocumentsOk,
+    ProgressOk,
+    QueueStatusOk,
+    ReindexOk,
+    SearchOk,
+)
 from core.knowledge import knowledge
 from core.settings.config import settings
 from infra import db
@@ -112,19 +124,19 @@ def ig_sync_saved(
 
 
 @mcp.tool()
-def ig_queue_status() -> dict[str, Any]:
+def ig_queue_status() -> QueueStatusOk | ErrResult:
     """Mostra o tamanho da fila ig.saved (ready/dead) e quantos consumidores ativos."""
     return ig_control.queue_status()
 
 
 @mcp.tool()
-def ig_worker_start() -> dict[str, Any]:
+def ig_worker_start() -> ControlCommandOk | ErrResult:
     """Envia o comando 'start' ao daemon ig-worker (retoma o consumo da fila)."""
     return ig_control.publish_control_command("start")
 
 
 @mcp.tool()
-def ig_worker_stop() -> dict[str, Any]:
+def ig_worker_stop() -> ControlCommandOk | ErrResult:
     """Envia o comando 'stop' ao daemon ig-worker (pausa o consumo da fila)."""
     return ig_control.publish_control_command("stop")
 
@@ -134,7 +146,7 @@ def ig_get_progress(
     last_n: int = Field(
         default=10, description="Quantos últimos resultados processados mostrar"
     ),
-) -> dict[str, Any]:
+) -> ProgressOk | ErrResult:
     """Mostra os últimos N posts do Instagram processados pelo ig-worker
     (state file)."""
     return ig_control.get_progress(last_n)
@@ -230,7 +242,7 @@ def knowledge_search(
         description="Termo ou pergunta para buscar na base de conhecimento"
     ),
     top_k: int = Field(default=5, description="Número máximo de resultados"),
-) -> dict[str, Any]:
+) -> SearchOk | ErrResult:
     """Busca na base de conhecimento (palavra-chave + semântica) e retorna os
     documentos mais relevantes."""
     return knowledge.search(query, top_k=top_k)
@@ -242,7 +254,7 @@ def knowledge_ask(
         description="Pergunta em linguagem natural sobre o que já foi salvo"
     ),
     top_k: int = Field(default=3, description="Quantos documentos usar como contexto"),
-) -> dict[str, Any]:
+) -> AskOk | ErrResult:
     """Responde a uma pergunta usando RAG sobre a base de conhecimento (busca + LLM)."""
     return knowledge.ask(query, top_k=top_k)
 
@@ -253,7 +265,7 @@ def knowledge_reindex(
         default=None,
         description="Modelo de embedding a usar (default: EMBEDDING_MODEL)",
     ),
-) -> dict[str, Any]:
+) -> ReindexOk | ErrResult:
     """Recalcula chunks e embeddings de todos os documentos (use após trocar de
     modelo de embedding)."""
     return knowledge.reindex(embedding_model=embedding_model)
@@ -271,7 +283,7 @@ def kb_list_documents(
         default=None, description="Filtra por categoria (video, audio, text, markdown)"
     ),
     tag: str | None = Field(default=None, description="Filtra por uma tag exata"),
-) -> dict[str, Any]:
+) -> ListDocumentsOk | ErrResult:
     """Lista o catálogo completo de documentos (paginado, mais recente
     primeiro), com filtros por categoria/origem/tag -- navegue por tudo que
     já está documentado, sem precisar de uma busca, para decidir o que
@@ -291,7 +303,7 @@ def kb_export_search(
         default=None, description="IDs diretos dos documentos (opcional)"
     ),
     limit: int = Field(default=20, description="Número máximo de resultados"),
-) -> dict[str, Any]:
+) -> ExportSearchOk | ErrResult:
     """Lista documentos para export -- por IDs, por busca, ou os mais recentes.
     Não grava nada; use a lista para confirmar e depois chamar kb_export."""
     return knowledge.export_search(query=query, ids=ids, limit=limit)
@@ -310,7 +322,7 @@ def kb_export(
             "Diretório de destino dos .md (os arquivos caem em <output_dir>/Knowledge/)"
         ),
     ),
-) -> dict[str, Any]:
+) -> ExportDocumentsOk | ErrResult:
     """Exporta os documentos selecionados como arquivos .md legíveis."""
     return knowledge.export_documents(ids=ids, output_dir=output_dir)
 

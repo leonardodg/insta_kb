@@ -12,6 +12,7 @@ import logging
 from pathlib import Path
 from typing import Any
 
+from core.contracts import ControlCommandOk, ErrResult, ProgressOk, QueueStatusOk
 from core.settings.config import settings
 from infra import db
 from infra.queue import queue as ig_queue
@@ -19,7 +20,7 @@ from infra.queue import queue as ig_queue
 logger = logging.getLogger(__name__)
 
 
-def queue_status() -> dict[str, Any]:
+def queue_status() -> QueueStatusOk | ErrResult:
     """Tamanho da fila ig.saved (ready/dead) e quantos consumidores ativos."""
     conn = None
     try:
@@ -32,7 +33,7 @@ def queue_status() -> dict[str, Any]:
             ig_queue.close(conn)
 
 
-def publish_control_command(command: str) -> dict[str, Any]:
+def publish_control_command(command: str) -> ControlCommandOk | ErrResult:
     """Publish a start/stop command to CONTROL_QUEUE for the ig-worker."""
     conn = None
     try:
@@ -53,7 +54,7 @@ def publish_control_command(command: str) -> dict[str, Any]:
             ig_queue.close(conn)
 
 
-def get_progress(last_n: int = 10) -> dict[str, Any]:
+def get_progress(last_n: int = 10) -> ProgressOk | ErrResult:
     """Últimos N posts processados pelo ig-worker (state file) + contagem."""
     entries: list[dict[str, Any]] = []
     try:

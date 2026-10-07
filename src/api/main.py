@@ -19,11 +19,20 @@ rebuilds every embedding -- too easy to trigger by accident over HTTP).
 
 from __future__ import annotations
 
-from typing import Any
-
 from fastapi import FastAPI, Query
 from pydantic import BaseModel, Field
 
+from core.contracts import (
+    AskOk,
+    ControlCommandOk,
+    ErrResult,
+    ExportDocumentsOk,
+    ExportSearchOk,
+    ListDocumentsOk,
+    ProgressOk,
+    QueueStatusOk,
+    SearchOk,
+)
 from core.knowledge import knowledge
 from core.settings.config import settings
 from infra import gpu_lock
@@ -111,7 +120,7 @@ async def healthcheck() -> dict[str, str]:
     tags=["instagram"],
     summary="RabbitMQ queue depth and consumer count",
 )
-async def ig_queue_status_endpoint() -> dict[str, Any]:
+async def ig_queue_status_endpoint() -> QueueStatusOk | ErrResult:
     """Mirrors the `ig_queue_status` MCP tool: how many messages are ready
     in `ig.saved`, how many are dead-lettered in `ig.saved.dead`, and how
     many consumers (the ig-worker daemon) are currently attached."""
@@ -125,7 +134,7 @@ async def ig_queue_status_endpoint() -> dict[str, Any]:
 )
 async def ig_progress_endpoint(
     last_n: int = Query(default=10, description="How many recent results to return"),
-) -> dict[str, Any]:
+) -> ProgressOk | ErrResult:
     """Mirrors the `ig_get_progress` MCP tool: reads the worker's state
     file plus a count of documents that have an `ig_pk` (i.e. came from
     Instagram, as opposed to manual/markdown ingestion)."""
@@ -137,7 +146,7 @@ async def ig_progress_endpoint(
     tags=["instagram"],
     summary="Resume the ig-worker (consume ig.saved again)",
 )
-async def ig_worker_start_endpoint() -> dict[str, Any]:
+async def ig_worker_start_endpoint() -> ControlCommandOk | ErrResult:
     """Publishes a 'start' control message. Idempotent -- safe to call when
     the worker is already running. Lightweight signal, unlike
     `ig_sync_saved` (not exposed here), so it's safe as a REST action."""
@@ -149,7 +158,7 @@ async def ig_worker_start_endpoint() -> dict[str, Any]:
     tags=["instagram"],
     summary="Pause the ig-worker",
 )
-async def ig_worker_stop_endpoint() -> dict[str, Any]:
+async def ig_worker_stop_endpoint() -> ControlCommandOk | ErrResult:
     """Publishes a 'stop' control message. Use before a GPU-heavy render
     on a shared card, same reasoning as the CLAUDE.md GPU-contention rule."""
     return ig_control.publish_control_command("stop")
@@ -168,7 +177,7 @@ async def ig_worker_stop_endpoint() -> dict[str, Any]:
 async def knowledge_search_endpoint(
     query: str = Query(description="Search term or question"),
     top_k: int = Query(default=5, description="Maximum number of results"),
-) -> dict[str, Any]:
+) -> SearchOk | ErrResult:
     """Read-only. Returns the top-k most relevant documents (hybrid
     keyword+embedding ranking, see `infra.db.repository.search_documents`)."""
     return knowledge.search(query, top_k=top_k)
@@ -182,7 +191,7 @@ async def knowledge_search_endpoint(
 async def knowledge_ask_endpoint(
     query: str = Query(description="Natural-language question"),
     top_k: int = Query(default=3, description="How many documents to use as context"),
-) -> dict[str, Any]:
+) -> AskOk | ErrResult:
     """POST (not GET) because it makes an LLM call, not because it mutates
     any state -- same read-only contract as `knowledge_search` underneath."""
     return knowledge.ask(query, top_k=top_k)
@@ -205,7 +214,7 @@ async def list_documents_endpoint(
         description="Filter by category: video, audio, text, markdown",
     ),
     tag: str | None = Query(default=None, description="Filter by one exact tag"),
-) -> dict[str, Any]:
+) -> ListDocumentsOk | ErrResult:
     """Lists every document, newest first, independent of any search query
     -- use this to see what's documented before deciding what to export
     with `POST /knowledge/export` (or to pick ids for
@@ -231,7 +240,7 @@ async def kb_export_search_endpoint(
     ),
     ids: list[int] | None = Query(default=None, description="Exact document ids"),
     limit: int = Query(default=20, description="Maximum rows returned"),
-) -> dict[str, Any]:
+) -> ExportSearchOk | ErrResult:
     """Read-only; never writes a file. Confirm the list here, then call
     `POST /knowledge/export` with the same `ids` to actually write the
     `.md` files."""
@@ -322,7 +331,7 @@ async def kb_export_endpoint(
         default="output/kb-export/",
         description="Destination dir -- files land under '<output_dir>/Knowledge/'",
     ),
-) -> dict[str, Any]:
+) -> ExportDocumentsOk | ErrResult:
     """Writes one `.md` file per id. Never raises on a single bad id --
     check each entry's `ok`/`skipped`/`error` in the response, the whole
     batch is not rolled back by one failure (same contract as the

@@ -12,13 +12,12 @@ usa aquele resultado — a resolução é local, sem rebote pela fachada.
 
 from __future__ import annotations
 
-from typing import Any
-
+from core.contracts import AskOk, ErrResult, ReindexOk, SearchOk
 from infra import db
 from infra.llm import client as llm
 
 
-def search(query: str, top_k: int = 5) -> dict[str, Any]:
+def search(query: str, top_k: int = 5) -> SearchOk | ErrResult:
     if not query or not query.strip():
         return {"ok": False, "error": "empty query"}
     session = db.get_session()
@@ -31,9 +30,9 @@ def search(query: str, top_k: int = 5) -> dict[str, Any]:
     return {"ok": True, "query": query, "results": results}
 
 
-def ask(query: str, top_k: int = 3) -> dict[str, Any]:
+def ask(query: str, top_k: int = 3) -> AskOk | ErrResult:
     search_result = search(query, top_k=top_k)
-    if not search_result.get("ok"):
+    if search_result["ok"] is False:
         return search_result
 
     results = search_result["results"]
@@ -71,7 +70,7 @@ def ask(query: str, top_k: int = 3) -> dict[str, Any]:
     return {"ok": True, "query": query, "answer": answer, "sources": sources}
 
 
-def reindex(embedding_model: str | None = None) -> dict[str, Any]:
+def reindex(embedding_model: str | None = None) -> ReindexOk | ErrResult:
     session = db.get_session()
     try:
         count = db.reindex_all(

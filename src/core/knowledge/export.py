@@ -15,6 +15,12 @@ from typing import Any
 
 from sqlalchemy import select
 
+from core.contracts import (
+    ErrResult,
+    ExportDocumentsOk,
+    ExportSearchOk,
+    ListDocumentsOk,
+)
 from core.settings.config import settings
 from infra import db, vault
 from infra.llm import client as llm
@@ -43,7 +49,7 @@ def export_search(
     query: str | None = None,
     ids: list[int] | None = None,
     limit: int = 20,
-) -> dict[str, Any]:
+) -> ExportSearchOk | ErrResult:
     """List documents for export — by ids, or by keyword query, or latest
     first.
 
@@ -98,7 +104,7 @@ def list_documents(
     platform: str | None = None,
     doc_type: str | None = None,
     tag: str | None = None,
-) -> dict[str, Any]:
+) -> ListDocumentsOk | ErrResult:
     """Paginated catalog of every document in the knowledge base, newest
     first -- browse "what's documented" to pick ids for `export_search`/
     `export_documents`, without needing a search query. `export_search`'s
@@ -153,7 +159,7 @@ def list_documents(
 def export_documents(
     ids: list[int],
     output_dir: str = "output/kb-export/",
-) -> dict[str, Any]:
+) -> ExportDocumentsOk | ErrResult:
     """Write the selected documents as readable .md files.
 
     Uses vault.write_markdown_copy, which always appends `/Knowledge` to the
