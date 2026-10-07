@@ -30,6 +30,12 @@ services:
   rabbitmq:
     image: rabbitmq:3-management
     restart: unless-stopped
+    # Nome de nó fixo: sem isso, cada container novo ganha hostname aleatório
+    # (o id curto do container) e o RabbitMQ cria um node Mnesia NOVO e VAZIO
+    # a cada recreate -- os dados ficam presos no node antigo, intactos mas
+    # inacessíveis. Visto na prática em 2026-10-06: duas pastas
+    # rabbit@<hostname-antigo> e rabbit@<hostname-novo> na mesma .rabbitmq/mnesia/.
+    hostname: insta-kb-rabbitmq
     env_file:
       - ../.env
     environment:

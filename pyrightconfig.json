@@ -5,4 +5,5 @@
   "venvPath": ".",
   "venv": ".venv",
   "typeCheckingMode": "strict",
+  "stubPath": "typings",
 }

@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "insta-kb": {
+      "command": "uv",
+      "args": ["run", "python", "src/mcp_server/server.py"],
+      "cwd": "/home/leodg/localhost/insta_kb",
+      "env": {
+        "MCP_TRANSPORT": "stdio"
+      }
+    }
+  }
+}
