@@ -9,7 +9,7 @@ from typing import Any
 
 import pytest
 
-from core.knowledge import knowledge
+from core.knowledge import knowledge, query
 
 
 class FakeSession:
@@ -176,7 +176,7 @@ def test_ask_no_results_returns_canned_answer(monkeypatch: pytest.MonkeyPatch):
     def _search(query: str, top_k: int = 3) -> dict[str, Any]:
         return {"ok": True, "query": query, "results": []}
 
-    monkeypatch.setattr(knowledge, "search", _search)
+    monkeypatch.setattr(query, "search", _search)
     result = knowledge.ask("pergunta qualquer")
     assert result["ok"] is True
     assert result["sources"] == []
@@ -198,7 +198,7 @@ def test_ask_uses_llm_chat_with_context(monkeypatch: pytest.MonkeyPatch):
             ],
         }
 
-    monkeypatch.setattr(knowledge, "search", _search)
+    monkeypatch.setattr(query, "search", _search)
     captured: dict[str, Any] = {}
 
     def fake_chat(prompt: str, **k: Any) -> str:
