@@ -155,6 +155,23 @@ def test_search_delegates_to_db(monkeypatch: pytest.MonkeyPatch):
     assert session.closed is True
 
 
+def test_search_db_failure_returns_ok_false_not_raise(monkeypatch: pytest.MonkeyPatch):
+    # search/ask are the most heavily used read tools -- a transient DB blip
+    # must come back as {"ok": False, ...}, not an uncaught exception that
+    # propagates as a raw 500/traceback through the MCP tool / REST endpoint.
+    session = FakeSession()
+    monkeypatch.setattr(knowledge.db, "get_session", lambda: session)
+
+    def boom(sess: Any, query: str, embed_fn: Any, top_k: int) -> Any:
+        raise RuntimeError("db down")
+
+    monkeypatch.setattr(knowledge.db, "search_documents", boom)
+    result = knowledge.search("python")
+    assert result["ok"] is False
+    assert "db down" in result["error"]
+    assert session.closed is True
+
+
 def test_ask_no_results_returns_canned_answer(monkeypatch: pytest.MonkeyPatch):
     def _search(query: str, top_k: int = 3) -> dict[str, Any]:
         return {"ok": True, "query": query, "results": []}

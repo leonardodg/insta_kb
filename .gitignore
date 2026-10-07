@@ -62,3 +62,6 @@ Thumbs.db
 *_empty_devcontainer_bak/
 downloads/
 output/
+database.db
+database.db-shm
+database.db-wal
