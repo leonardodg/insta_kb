@@ -10,6 +10,34 @@ Plano original desta migração (todas as fases e decisões):
 Ver também `minimax-video-factory/docs/HANDOFF.md`, seção "EM ANDAMENTO
 2026-10-06", para o lado que ainda falta limpar no projeto de origem.
 
+## ✅ Commit real em 2026-10-06: `a773f2c` em `migrate/instagram-kb-from-video-factory`
+
+Primeiro commit de código de verdade do projeto (antes só tinha `app/main.py`
+stub). Passou pelos 6 hooks do `pre-commit` de verdade pela primeira vez —
+`ruff check`, `ruff format`, `pyright` (strict), `bandit`, `pip-audit` — porque
+o hook estava **quebrado** até esta sessão: `.git/hooks/pre-commit` tinha um
+path Python hardcoded de outro ambiente (`/home/appuser/.cache/uv/...`, de
+dentro do devcontainer), então todo commit antes deste silenciosamente nunca
+rodou os checks. `uv run pre-commit install` corrigiu o path para este host.
+
+Isso revelou **497 erros de `pyright` strict**, 100% em testes/scripts (zero
+em `src/`) — faltavam anotações de tipo em funções fake/mock usadas com
+`monkeypatch.setattr` e em lambdas inline (que não aceitam anotação de
+parâmetro em Python, por isso viraram funções nomeadas tipadas). Corrigidos
+de verdade, não suprimidos — só 11 `reportPrivateUsage` (testes acessando
+helpers internos do `ig_worker`/`repository` sem equivalente público) e 2
+casos de lacuna do stub do `pika` levaram `# pyright: ignore` documentado.
+`pip-audit` também pegou CVEs reais em `urllib3`/`virtualenv` — nenhum dos
+dois é dependência direta do app (vêm do próprio `pre-commit`/`sentry-sdk`
+transitivamente); `uv lock --upgrade-package urllib3 --upgrade-package
+virtualenv` resolveu sem tocar em nada do app.
+
+Estado final verificado: `uv run pytest -q` → 136 passed; `pyright` → 0
+erros; `ruff`/`bandit`/`pip-audit` → limpos.
+
+⚠️ **O commit está na branch `migrate/instagram-kb-from-video-factory`, não
+`main`.** Decidir/confirmar quando mergear.
+
 ---
 
 ## O que é este projeto
