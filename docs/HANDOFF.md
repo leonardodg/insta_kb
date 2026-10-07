@@ -295,6 +295,28 @@ worktree. Backfill de cobertura de teste para esse comportamento (28 testes
 novos) em `tests/test_infra_{queue,llm_client,instagram_ig_sync}.py` e
 `test_workers_ig_worker.py`.
 
+## ✅ Security review em 2026-10-07 (PR #1, merged `2794806`)
+
+Dois achados reais, ambos corrigidos:
+
+1. **`kb_export` aceitava `output_dir` sem validar** — alcançável sem
+   autenticação via `POST /knowledge/export`. Um caller podia escrever
+   fora da árvore do projeto (`../../etc`, caminho absoluto). Corrigido:
+   `export_documents` resolve e confere contra `{PROJECT_ROOT}/output`
+   antes de qualquer escrita.
+2. **Porta do serviço `python` no devcontainer compose em todas as
+   interfaces** — diferente de postgres/rabbitmq, que já ficavam em
+   `127.0.0.1`. Corrigido para `127.0.0.1`, mesmo padrão dos outros dois.
+
+**Não encontrado:** segredos em log, SQL injection fora do `nosec` já
+documentado, container rodando como root.
+
+**Pendência que a review não resolveu, registrada e aceita por agora:** a
+API REST não tem autenticação nenhuma — nenhum endpoint, incluindo os de
+escrita (`kb_export`) e controle (`ig_worker_start/stop`). Aceitável para
+uso local-only (é o que é hoje, atrás de `127.0.0.1` depois do fix acima);
+precisa de uma camada de auth antes de qualquer exposição alem disso.
+
 ## Pendências abertas (nenhuma delas é um bug — são próximos passos)
 
 1. **Subir o `ig-worker` de verdade.** Código migrado e testado, mas 0
