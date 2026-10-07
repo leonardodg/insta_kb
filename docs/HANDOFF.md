@@ -276,6 +276,25 @@ reais sob `--aplicar`, de propósito, com backup antes de qualquer escrita.
 Não foram **executados** nesta sessão (não havia nada pendente para
 reprocessar), só portados e verificados estaticamente.
 
+**Mais 3 migrados em 2026-10-07**: `ig_catchall_check.py` (enumera só a
+coleção "All posts", a única que lista tudo), `ig_replay_dlq.py` (devolve
+mensagens da DLQ para a fila de trabalho, dedup por `ig_pk`),
+`ig_sync_bg.py` (sincronização completa em processo de background, para
+varreduras que passam do corte de 1800 s de uma tool MCP). Mesmo padrão de
+verificação dos 4 anteriores.
+
+**Checado nesta sessão: o `main` do minimax-video-factory recebeu ~8
+commits de correção no domínio IG/KB depois que o ponto de partida do
+worktree de separação divergiu** (heartbeat AMQP, carrossel misto, mídia
+degradada — webp/áudio ausente/schema errado do LLM, post malformado na
+listagem da catch-all, num_ctx/legenda/tetos de saída cortando conteúdo em
+silêncio, publicação incremental por coleção). Conferido cada um contra o
+código real aqui: **as 8 já estavam presentes** — a migração original já
+tinha partido de um checkout tardio do `main`, não da base antiga do
+worktree. Backfill de cobertura de teste para esse comportamento (28 testes
+novos) em `tests/test_infra_{queue,llm_client,instagram_ig_sync}.py` e
+`test_workers_ig_worker.py`.
+
 ## Pendências abertas (nenhuma delas é um bug — são próximos passos)
 
 1. **Subir o `ig-worker` de verdade.** Código migrado e testado, mas 0
