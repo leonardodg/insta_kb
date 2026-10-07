@@ -11,6 +11,7 @@ from typing import Any
 import pytest
 
 from workers import ig_worker as mod
+from workers import media_download
 
 
 def test_classify_file():
@@ -342,14 +343,14 @@ def test_process_message_carousel_all_images_fail_names_the_count():
 def test_existing_media_empty_when_dir_missing(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
-    monkeypatch.setattr(mod, "IG_DOWNLOADS_DIR", tmp_path / "nope")
+    monkeypatch.setattr(media_download, "IG_DOWNLOADS_DIR", tmp_path / "nope")
     assert mod.existing_media("123") == []
 
 
 def test_existing_media_sorted_by_mtime(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
-    monkeypatch.setattr(mod, "IG_DOWNLOADS_DIR", tmp_path)
+    monkeypatch.setattr(media_download, "IG_DOWNLOADS_DIR", tmp_path)
     post_dir = tmp_path / "123"
     post_dir.mkdir()
     (post_dir / "b.jpg").write_bytes(b"2")

@@ -3,7 +3,7 @@
 Migrated verbatim (behaviour unchanged) from minimax-video-factory's
 `minimax_mcp/downloader.py`. This closes the gap left by the earlier
 migration: `core.knowledge.knowledge.ingest_video`/`ingest_audio` and
-`workers.ig_worker._default_download` lazily import
+`workers.media_download.default_download` lazily import
 `infra.downloader.VideoDownloader`, which did not exist until now.
 
 No config reads here (output_dir/browser/format_spec are constructor
