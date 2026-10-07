@@ -131,7 +131,7 @@ mesmos bind mounts.
 | 4 | Docker insta_kb (Parte B) | ✅ | venv isolado `/opt/venv` (bug real: `/app/.venv` quebrava o `.venv` do host); rede `insta-kb-net` + api/worker/mcp; Ollama no host via `host.docker.internal`; `.mcp.json`→HTTP; worker validado com post real; commits `bf824e5`+`02140f1`+`984e03c` |
 | 5 | MCPs do OpenCode | ⏳ | |
 | 6 | Matriz de testes | ⏳ | |
-| 7 | Fila do insta_kb | ⏳ | |
+| 7 | Fila do insta_kb | ✅ (parada proposital) | drenagem parcial 329→322 ready, 0 dead, 7 ingests e2e (docs 3713→3719), 0 errors; parada graciosa por decisão do usuário (retomável); commit `473e773` (insta_kb) |
 | 8 | Documentação | ⏳ | |
 | 9 | Diagramas | ⏳ | |
 
