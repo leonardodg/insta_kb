@@ -65,3 +65,6 @@ output/
 database.db
 database.db-shm
 database.db-wal
+
+# MkDocs build output (GitHub Pages artifact)
+site/

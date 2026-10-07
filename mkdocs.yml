@@ -1,0 +1,54 @@
+site_name: Insta Knowledge Base
+site_description: Everything you save on Instagram, turned into a searchable, local knowledge base.
+# Required for correct canonical URLs and sitemap.xml on GitHub Pages, which
+# serves the project site from a /<repo>/ sub-path rather than the domain root.
+site_url: https://leonardodg.github.io/insta_kb/
+repo_url: https://github.com/leonardodg/insta_kb
+repo_name: leonardodg/insta_kb
+docs_dir: docs
+theme:
+  name: material
+  features:
+    - navigation.sections
+    - search.suggest
+    - content.code.copy
+  palette:
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+
+nav:
+  - Home: index.md
+  - Arquitetura: ARQUITETURA.md
+
+# Internal working records live in docs/ for version control, not for the
+# published site (HANDOFF has local paths; the PLANO/REVISAO/SOLID files are
+# execution history).
+exclude_docs: |
+  HANDOFF.md
+  PLANO_*.md
+  REVISAO_*.md
+  SOLID_AUDIT.md
+  superpowers/
+
+markdown_extensions:
+  - admonition
+  - toc:
+      permalink: true
+  - pymdownx.highlight
+  - pymdownx.superfences:
+      custom_fences:
+        # Material loads mermaid.js itself when it finds a <pre class="mermaid">.
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+
+plugins:
+  - search

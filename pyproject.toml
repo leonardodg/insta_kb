@@ -45,6 +45,10 @@ requires = ["uv_build>=0.12.5,<0.13.0"]
 build-backend = "uv_build"
 
 [dependency-groups]
+docs = [
+    "mkdocs>=1.6.0",
+    "mkdocs-material>=9.5.0",
+]
 dev = [
     "bandit[toml]>=1.9.4",
     "pip-audit>=2.10.1",
