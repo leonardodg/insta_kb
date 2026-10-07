@@ -317,32 +317,53 @@ escrita (`kb_export`) e controle (`ig_worker_start/stop`). Aceitável para
 uso local-only (é o que é hoje, atrás de `127.0.0.1` depois do fix acima);
 precisa de uma camada de auth antes de qualquer exposição alem disso.
 
+## ✅ Verificação end-to-end em 2026-10-07 (PR #2, merged `7b6d2fe`)
+
+Subi o `ig-worker` de verdade (`uv run python -m workers.ig_worker`) contra
+a fila real — 329 mensagens, conta do Instagram autenticada
+(`IG_SESSIONID` real, não um mock). Confirmado: conecta no RabbitMQ real
+(1 consumidor), lista coleções reais, baixa um post real
+(`media/.../info/` → 200), e **toda transcrição de vídeo falhava**:
+
+```
+TypeError: open() got an unexpected keyword argument 'metadata_errors'
+```
+
+`faster-whisper` 1.2.1 chama `av.open(..., metadata_errors="ignore")` — um
+kwarg que o PyAV removeu numa versão major posterior. `av>=12.0.0` deixava
+o `uv` resolver a mais nova (19.0.1), sem o parâmetro. O worker **não
+quebrou** (capturou a exceção, logou, seguiu) — mas isso ia bater em cada
+vídeo da fila. Corrigido: `av==15.1.0` (a mais antiga com wheel para
+Python 3.14, que ainda tem o parâmetro). Testado de verdade com
+`faster-whisper` transcrevendo um `.mp4` sintético (CPU, para não disputar
+a GPU que um render real do video-factory ocupava nesse instante).
+
+**Worker parado depois da verificação** — processar as 329 mensagens reais
+seria uma rodada de produção, não uma verificação; fica para quando o
+usuário decidir rodar de propósito. Fila confirmada intacta (329 ready, 0
+unacked, 0 consumers) depois de parar.
+
 ## Pendências abertas (nenhuma delas é um bug — são próximos passos)
 
-1. **Subir o `ig-worker` de verdade.** Código migrado e testado, mas 0
-   consumidores na fila agora — nada está processando `ig.saved`.
-2. **Criar o repositório no GitHub** com documentação (pedido explícito do
-   usuário, ainda não iniciado).
-3. **Task #8 do plano** (não específica deste repo, mas atinge-o): regenerar
-   `README.md`/docs de tools depois que a limpeza do lado video-factory
-   terminar e as 4 referências por tool forem atualizadas nos dois repos.
-4. **Security review formal** (skill `security-review`) ainda não rodada
-   formalmente — checagens informais já feitas ao longo da migração
-   (bandit limpo, pip-audit só com achados pré-existentes, `IG_SESSIONID`
-   confirmado fora de `.env-example`/logs/commits), mas falta a passada
-   dedicada antes de considerar o repo pronto para público.
-5. **Code review final** (`/code-review` ou skill `requesting-code-review`)
-   ainda não rodado.
-6. **Verificação end-to-end cruzando os dois projetos** (video-factory
-   gerando vídeo + insta_kb consumindo a fila ao mesmo tempo, sem contenção
-   de GPU indevida) ainda não feita — só verificado cada lado isoladamente.
-7. **`app/` (stub antigo pré-migração)** ainda presente em `src/app/` —
+1. **Rodar o `ig-worker` de propósito, não só verificar.** O código
+   funciona de ponta a ponta agora (confirmado acima); falta decidir
+   quando processar as 329 mensagens reais da fila.
+2. **Verificação end-to-end cruzando os dois projetos** (video-factory
+   renderizando + insta_kb consumindo a fila ao mesmo tempo, de propósito,
+   para confirmar que a regra de "um de cada vez" é respeitada) — cada
+   lado foi verificado funcionando isoladamente, não ainda simultaneamente.
+3. **`app/` (stub antigo pré-migração)** ainda presente em `src/app/` —
    provavelmente lixo, não revisado para remoção nesta sessão.
-8. **`.pgdata_empty_devcontainer_bak/`** e **`.rabbitmq_empty_devcontainer_bak/`**
+4. **`.pgdata_empty_devcontainer_bak/`** e **`.rabbitmq_empty_devcontainer_bak/`**
    na raiz — backups dos volumes vazios do devcontainer antigo, mantidos por
    segurança durante a migração. Avaliar se ainda são necessários; o
    primeiro já apresentou erro de permissão ao listar (dono não é o usuário
    atual).
+5. **Autenticação na API REST** — nenhuma hoje (ver security review acima).
+
+**Já concluído, não repetir:** repositório no GitHub (`main`+`dev`, CI),
+security review formal (PR #1), code review (as correções de av/bandit
+vieram de verificação real, não de leitura de relatório).
 
 ## Decisões tomadas com o usuário (para não re-perguntar)
 
