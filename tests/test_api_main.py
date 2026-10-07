@@ -239,3 +239,58 @@ def test_kb_export_search_endpoint_delegates(monkeypatch: pytest.MonkeyPatch):
     assert resp.json() == {"ok": True, "documents": []}
     assert captured["query"] == "turbo"
     assert captured["limit"] == DEFAULT_EXPORT_LIMIT
+
+
+def test_gpu_status_endpoint_free(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(
+        api_main.gpu_lock, "status", lambda: {"free": True, "holder": None}
+    )
+    client = TestClient(api_main.app)
+    resp = client.get("/gpu/status")
+    assert resp.status_code == HTTP_OK
+    assert resp.json() == {"free": True, "holder": None}
+
+
+def test_gpu_acquire_endpoint_success(monkeypatch: pytest.MonkeyPatch):
+    captured: dict[str, object] = {}
+
+    def fake_acquire(holder: str, timeout: float) -> str | None:
+        captured["holder"] = holder
+        captured["timeout"] = timeout
+        return "tok-123"
+
+    monkeypatch.setattr(api_main.gpu_lock, "acquire", fake_acquire)
+    client = TestClient(api_main.app)
+    resp = client.post("/gpu/acquire", json={"holder": "render seed=42", "timeout": 10})
+    assert resp.status_code == HTTP_OK
+    assert resp.json() == {"ok": True, "token": "tok-123", "held_by": None}
+    assert captured == {"holder": "render seed=42", "timeout": 10}
+
+
+def test_gpu_acquire_endpoint_timeout_reports_holder(monkeypatch: pytest.MonkeyPatch):
+    def fake_timed_out_acquire(holder: str, timeout: float) -> str | None:
+        return None
+
+    def fake_status() -> dict[str, bool | str | None]:
+        return {"free": False, "holder": "someone else"}
+
+    monkeypatch.setattr(api_main.gpu_lock, "acquire", fake_timed_out_acquire)
+    monkeypatch.setattr(api_main.gpu_lock, "status", fake_status)
+    client = TestClient(api_main.app)
+    resp = client.post("/gpu/acquire", json={"holder": "me", "timeout": 0.1})
+    assert resp.status_code == HTTP_OK
+    assert resp.json() == {"ok": False, "token": None, "held_by": "someone else"}
+
+
+def test_gpu_release_endpoint_delegates(monkeypatch: pytest.MonkeyPatch):
+    captured: dict[str, object] = {}
+
+    def fake_release(token: str) -> None:
+        captured["token"] = token
+
+    monkeypatch.setattr(api_main.gpu_lock, "release", fake_release)
+    client = TestClient(api_main.app)
+    resp = client.post("/gpu/release", params={"token": "tok-123"})
+    assert resp.status_code == HTTP_OK
+    assert resp.json() == {"ok": True}
+    assert captured["token"] == "tok-123"

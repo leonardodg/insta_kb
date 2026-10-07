@@ -814,16 +814,27 @@ def _default_transcribe(filepath: str) -> dict[str, Any]:
     # Deliberately lazy (PLC0415): faster-whisper is a heavy, GPU-touching
     # dependency; importing it only when a video actually needs transcribing
     # keeps unit tests (which inject fakes for this callable) free of it.
+    from infra.gpu_lock import GpuLockTimeout, held  # noqa: PLC0415
     from infra.transcriber import AudioTranscriber  # noqa: PLC0415
 
-    transcriber = AudioTranscriber(model_size=WHISPER_MODEL, device=WHISPER_DEVICE)
+    # This machine has one 12 GB GPU, shared with minimax-video-factory's
+    # ComfyUI renders (same lock file, see infra/gpu_lock/gpu_lock.py).
+    # Timeout is generous: a render can legitimately run for ~20 minutes
+    # (see that repo's CLAUDE.md pixel-frame budget table).
     try:
-        return transcriber.transcribe(filepath)
-    finally:
-        try:
-            transcriber.free()
-        except Exception:
-            logger.warning("could not release Whisper VRAM", exc_info=True)
+        with held(f"ig-worker transcribe {filepath}", timeout=1800):
+            transcriber = AudioTranscriber(
+                model_size=WHISPER_MODEL, device=WHISPER_DEVICE
+            )
+            try:
+                return transcriber.transcribe(filepath)
+            finally:
+                try:
+                    transcriber.free()
+                except Exception:
+                    logger.warning("could not release Whisper VRAM", exc_info=True)
+    except GpuLockTimeout as exc:
+        return {"ok": False, "error": str(exc)}
 
 
 def _safe_ack(ch: Any, method: Any) -> None:

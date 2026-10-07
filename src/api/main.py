@@ -24,6 +24,7 @@ from fastapi import FastAPI, Query
 from pydantic import BaseModel, Field
 
 from core.settings.config import settings
+from infra import gpu_lock
 from mcp_server import server as mcp_server
 
 app = FastAPI(
@@ -238,6 +239,73 @@ async def kb_export_search_endpoint(
 # =============================================================================
 # Knowledge base: write
 # =============================================================================
+
+
+class GpuAcquireRequest(BaseModel):
+    holder: str = Field(
+        description="Who's asking, e.g. 'ig-worker transcribe post 123'"
+    )
+    timeout: float = Field(default=300, description="Max seconds to wait for the lock")
+
+
+class GpuAcquireResponse(BaseModel):
+    ok: bool
+    token: str | None = Field(
+        default=None, description="Pass this to POST /gpu/release when done"
+    )
+    held_by: str | None = Field(
+        default=None, description="Who holds it, if ok=false (timed out)"
+    )
+
+
+class GpuStatusResponse(BaseModel):
+    free: bool
+    holder: str | None = None
+
+
+@app.post(
+    "/gpu/acquire",
+    tags=["gpu"],
+    summary="Reserve the shared GPU mutex",
+    response_model=GpuAcquireResponse,
+)
+async def gpu_acquire_endpoint(req: GpuAcquireRequest) -> GpuAcquireResponse:
+    """Blocks (server-side) up to `timeout` seconds. Same lock file as
+    minimax-video-factory's ComfyUI renders (see infra/gpu_lock/gpu_lock.py
+    docstring) -- this machine has one 12 GB GPU, not two. Call before
+    Whisper transcription or any other GPU-heavy work; release after."""
+    token = gpu_lock.acquire(req.holder, timeout=req.timeout)
+    if token is None:
+        status = gpu_lock.status()
+        return GpuAcquireResponse(ok=False, held_by=status["holder"])
+    return GpuAcquireResponse(ok=True, token=token)
+
+
+@app.post(
+    "/gpu/release",
+    tags=["gpu"],
+    summary="Release a previously acquired GPU mutex",
+)
+async def gpu_release_endpoint(
+    token: str = Query(description="Token from /gpu/acquire"),
+) -> dict[str, bool]:
+    """Fail-soft: releasing an unknown/already-released token is not an
+    error (safe to call unconditionally in a `finally` block)."""
+    gpu_lock.release(token)
+    return {"ok": True}
+
+
+@app.get(
+    "/gpu/status",
+    tags=["gpu"],
+    summary="Is the shared GPU mutex free?",
+    response_model=GpuStatusResponse,
+)
+async def gpu_status_endpoint() -> GpuStatusResponse:
+    """Read-only, non-blocking. `holder` is a free-text description, not
+    guaranteed machine-parseable -- for humans/logs, not for branching
+    logic (use /gpu/acquire's timeout for that)."""
+    return GpuStatusResponse(**gpu_lock.status())
 
 
 @app.post(

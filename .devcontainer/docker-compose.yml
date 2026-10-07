@@ -86,13 +86,18 @@ services:
       OLLAMA_URL: http://host.docker.internal:11434
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-kb}:${POSTGRES_PASSWORD:-kb}@postgres:5432/${POSTGRES_DB:-knowledge}
       RABBITMQ_URL: amqp://${RABBITMQ_USER:-guest}:${RABBITMQ_PASS:-guest}@rabbitmq:5672/
+      GPU_LOCK_DIR: /var/lib/gpu-lock
     command: /opt/venv/bin/uvicorn api.main:app --host 0.0.0.0 --port 8000
     ports:
       # No auth on the REST API (see docs/HANDOFF.md security review) --
       # 127.0.0.1 only, same reasoning as postgres/rabbitmq above.
       - "127.0.0.1:${API_PORT:-8084}:8000"
     depends_on: [postgres, rabbitmq]
-    volumes: [../:/app]
+    volumes:
+      - ../:/app
+      # Shared with minimax-video-factory's MCP server (same host path,
+      # neither repo imports the other -- see src/infra/gpu_lock/gpu_lock.py).
+      - ${HOME}/.gpu-lock:/var/lib/gpu-lock
     user: appuser
 
   worker:
@@ -108,9 +113,12 @@ services:
       OLLAMA_URL: http://host.docker.internal:11434
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-kb}:${POSTGRES_PASSWORD:-kb}@postgres:5432/${POSTGRES_DB:-knowledge}
       RABBITMQ_URL: amqp://${RABBITMQ_USER:-guest}:${RABBITMQ_PASS:-guest}@rabbitmq:5672/
+      GPU_LOCK_DIR: /var/lib/gpu-lock
     command: /opt/venv/bin/python -m workers.ig_worker
     depends_on: [postgres, rabbitmq]
-    volumes: [../:/app]
+    volumes:
+      - ../:/app
+      - ${HOME}/.gpu-lock:/var/lib/gpu-lock
     user: appuser
     deploy:
       resources:
@@ -135,9 +143,12 @@ services:
       RABBITMQ_URL: amqp://${RABBITMQ_USER:-guest}:${RABBITMQ_PASS:-guest}@rabbitmq:5672/
       MCP_TRANSPORT: streamable-http
       MCP_PORT: "8849"
+      GPU_LOCK_DIR: /var/lib/gpu-lock
     command: /opt/venv/bin/python -m mcp_server.server
     ports:
       - "127.0.0.1:${MCP_PORT:-8849}:8849"
     depends_on: [postgres, rabbitmq]
-    volumes: [../:/app]
+    volumes:
+      - ../:/app
+      - ${HOME}/.gpu-lock:/var/lib/gpu-lock
     user: appuser
