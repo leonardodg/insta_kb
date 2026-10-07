@@ -21,7 +21,17 @@ dependencies = [
     "httpx>=0.27.0",
     "pyyaml>=6.0.0",
     "pillow>=10.0.0",
-    "av>=12.0.0",
+    # Pinned, not >=: faster-whisper 1.2.1's decode_audio() calls
+    # av.open(..., metadata_errors="ignore") -- a kwarg PyAV removed in a
+    # later major version. av>=12 let uv resolve 19.0.1, which broke every
+    # video transcription with a silent-looking TypeError (caught by the
+    # worker's try/except, so it just looked like "every video fails" with
+    # no hint why). faster-whisper has not released a fix (latest is still
+    # 1.2.1, declares av>=11 with no upper bound -- same trap we just fell
+    # into). 15.1.0 is the oldest release with a cp314 wheel (this project
+    # requires Python >=3.14) that still has the parameter. Found live
+    # against the real ig-worker, 2026-10-07 -- see docs/HANDOFF.md.
+    "av==15.1.0",
     "yt-dlp>=2024.1.0",
     "fastmcp>=2.0.0",
 ]
