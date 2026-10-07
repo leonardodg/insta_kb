@@ -4,6 +4,7 @@ embed/chat are monkeypatched with fakes."""
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -262,6 +263,53 @@ def test_export_documents_accepts_subdirectory_of_output(
     monkeypatch.setattr(session, "execute", _execute, raising=False)
     result = knowledge.export_documents([999], output_dir="output/kb-export/sub")
     assert result["ok"] is True
+
+
+def test_export_documents_writes_to_the_validated_path_not_cwd(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    # Regression test: an earlier version validated `resolved` (anchored on
+    # PROJECT_ROOT) but then called vault.write_markdown_copy(doc, output_dir)
+    # with the RAW string -- which vault resolves against the process's CWD,
+    # not PROJECT_ROOT. The check and the actual write used two different
+    # bases that only agreed by accident (CWD == PROJECT_ROOT in dev/docker).
+    # This test forces the FakeDoc to actually be found (so the write call is
+    # reached, unlike the accept-path test above) and asserts the exact
+    # argument vault.write_markdown_copy receives.
+    session = FakeSession()
+    monkeypatch.setattr(knowledge.db, "get_session", lambda: session)
+    doc = FakeDoc(title="Found doc")
+
+    class FakeExecResult:
+        def scalars(self) -> "FakeExecResult":
+            return self
+
+        def all(self) -> list[FakeDoc]:
+            return [doc]
+
+    def _execute(stmt: Any) -> FakeExecResult:
+        return FakeExecResult()
+
+    monkeypatch.setattr(session, "execute", _execute, raising=False)
+
+    captured: dict[str, Any] = {}
+
+    def fake_write(document: dict[str, Any], vault_path: str) -> dict[str, Any]:
+        captured["vault_path"] = vault_path
+        return {"ok": True, "skipped": False, "path": f"{vault_path}/x.md"}
+
+    monkeypatch.setattr(knowledge.vault, "write_markdown_copy", fake_write)
+
+    result = knowledge.export_documents([1], output_dir="output/kb-export/sub")
+
+    assert result["ok"] is True
+    assert result["files"][0]["ok"] is True
+    expected_path = Path(knowledge.settings.PROJECT_ROOT) / "output/kb-export/sub"
+    expected = str(expected_path.resolve())
+    assert captured["vault_path"] == expected
+    # The bug this guards against: a raw relative string instead of the
+    # PROJECT_ROOT-anchored absolute path.
+    assert captured["vault_path"] != "output/kb-export/sub"
 
 
 def test_export_documents_missing_id_reported_without_aborting(

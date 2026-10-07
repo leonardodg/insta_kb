@@ -474,6 +474,8 @@ def search(query: str, top_k: int = 5) -> dict[str, Any]:
     session = db.get_session()
     try:
         results = db.search_documents(session, query, embed_fn=llm.embed, top_k=top_k)
+    except Exception as e:
+        return {"ok": False, "error": f"search failed: {e}"}
     finally:
         session.close()
     return {"ok": True, "query": query, "results": results}
@@ -527,6 +529,9 @@ def reindex(embedding_model: str | None = None) -> dict[str, Any]:
             embed_fn=llm.embed,
             embedding_model=embedding_model or llm.EMBEDDING_MODEL,
         )
+    except Exception as e:
+        session.rollback()
+        return {"ok": False, "error": f"reindex failed: {e}"}
     finally:
         session.close()
     return {"ok": True, "documents_reindexed": count}
@@ -597,6 +602,8 @@ def export_search(
             }
             for d in docs
         ]
+    except Exception as e:
+        return {"ok": False, "error": f"export_search failed: {e}"}
     finally:
         session.close()
     return {"ok": True, "total": len(documents), "documents": documents}
@@ -646,6 +653,8 @@ def list_documents(
             }
             for d in docs
         ]
+    except Exception as e:
+        return {"ok": False, "error": f"list_documents failed: {e}"}
     finally:
         session.close()
     return {
@@ -676,6 +685,13 @@ def export_documents(
     path (`../../etc`, an absolute path outside the project, a symlink
     escape) and get this process to write files there. The base is
     `{PROJECT_ROOT}/output` -- same tree the export already defaults into.
+
+    The *resolved, absolute* path is what gets passed to
+    vault.write_markdown_copy below -- not the raw `output_dir` string.
+    vault.write_markdown_copy joins whatever string it receives as a plain
+    `Path(...)`, which resolves relative paths against the process's CWD,
+    not PROJECT_ROOT; passing the raw string through would validate one
+    path and write to a different one whenever CWD != PROJECT_ROOT.
     """
     if not ids:
         return {"ok": False, "error": "ids required"}
@@ -691,6 +707,8 @@ def export_documents(
             .all()
         )
         by_id = {d.id: d for d in rows}
+    except Exception as e:
+        return {"ok": False, "error": f"export_documents failed: {e}"}
     finally:
         session.close()
 
@@ -700,7 +718,7 @@ def export_documents(
         if doc is None:
             files.append({"id": doc_id, "ok": False, "error": "not found"})
             continue
-        result = vault.write_markdown_copy(_document_to_dict(doc), output_dir)
+        result = vault.write_markdown_copy(_document_to_dict(doc), str(resolved))
         written = bool(result.get("ok")) and not result.get("skipped")
         files.append(
             {
