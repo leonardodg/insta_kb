@@ -28,20 +28,31 @@ MCP_PORT, and everything infra.queue/infra.instagram/core.knowledge read).
 
 from __future__ import annotations
 
-import json
 import logging
 import sys
-from pathlib import Path
 from typing import Any
 
 from fastmcp import FastMCP
 from pydantic import Field
 
+from core.contracts import (
+    AskOk,
+    ControlCommandOk,
+    ErrResult,
+    ExportDocumentsOk,
+    ExportSearchOk,
+    ListDocumentsOk,
+    ProgressOk,
+    QueueStatusOk,
+    ReindexOk,
+    SearchOk,
+)
 from core.knowledge import knowledge
 from core.settings.config import settings
 from infra import db
 from infra.instagram import ig_sync
 from infra.queue import queue as ig_queue
+from services import ig_control
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s"
@@ -113,46 +124,21 @@ def ig_sync_saved(
 
 
 @mcp.tool()
-def ig_queue_status() -> dict[str, Any]:
+def ig_queue_status() -> QueueStatusOk | ErrResult:
     """Mostra o tamanho da fila ig.saved (ready/dead) e quantos consumidores ativos."""
-    conn = ig_queue.connect()
-    try:
-        return ig_queue.queue_status(conn.channel())
-    except Exception as e:
-        return {"ok": False, "error": f"ig_queue_status failed: {e}"}
-    finally:
-        ig_queue.close(conn)
-
-
-def _publish_control_command(command: str) -> dict[str, Any]:
-    """Shared body of ig_worker_start/ig_worker_stop: publish to CONTROL_QUEUE."""
-    conn = ig_queue.connect()
-    try:
-        channel = conn.channel()
-        ig_queue.declare(channel)
-        channel.basic_publish(
-            exchange="",
-            routing_key=ig_queue.CONTROL_QUEUE,
-            body=json.dumps({"command": command}),
-            properties=None,
-        )
-        return {"ok": True, "command": command}
-    except Exception as e:
-        return {"ok": False, "error": f"ig_worker_{command} failed: {e}"}
-    finally:
-        ig_queue.close(conn)
+    return ig_control.queue_status()
 
 
 @mcp.tool()
-def ig_worker_start() -> dict[str, Any]:
+def ig_worker_start() -> ControlCommandOk | ErrResult:
     """Envia o comando 'start' ao daemon ig-worker (retoma o consumo da fila)."""
-    return _publish_control_command("start")
+    return ig_control.publish_control_command("start")
 
 
 @mcp.tool()
-def ig_worker_stop() -> dict[str, Any]:
+def ig_worker_stop() -> ControlCommandOk | ErrResult:
     """Envia o comando 'stop' ao daemon ig-worker (pausa o consumo da fila)."""
-    return _publish_control_command("stop")
+    return ig_control.publish_control_command("stop")
 
 
 @mcp.tool()
@@ -160,26 +146,10 @@ def ig_get_progress(
     last_n: int = Field(
         default=10, description="Quantos últimos resultados processados mostrar"
     ),
-) -> dict[str, Any]:
+) -> ProgressOk | ErrResult:
     """Mostra os últimos N posts do Instagram processados pelo ig-worker
     (state file)."""
-    entries: list[dict[str, Any]] = []
-    try:
-        state_path = Path(settings.IG_STATE_FILE)
-        if state_path.exists():
-            entries = json.loads(state_path.read_text(encoding="utf-8"))
-    except Exception as exc:
-        logger.warning("could not read %s: %s", settings.IG_STATE_FILE, exc)
-        entries = []
-    try:
-        session = db.get_session()
-        try:
-            total_ig = len(db.list_ig_pks(session))
-        finally:
-            session.close()
-    except Exception as e:
-        return {"ok": False, "error": f"ig_get_progress failed: {e}"}
-    return {"ok": True, "last": entries[-last_n:], "documents_with_ig_pk": total_ig}
+    return ig_control.get_progress(last_n)
 
 
 # =============================================================================
@@ -272,7 +242,7 @@ def knowledge_search(
         description="Termo ou pergunta para buscar na base de conhecimento"
     ),
     top_k: int = Field(default=5, description="Número máximo de resultados"),
-) -> dict[str, Any]:
+) -> SearchOk | ErrResult:
     """Busca na base de conhecimento (palavra-chave + semântica) e retorna os
     documentos mais relevantes."""
     return knowledge.search(query, top_k=top_k)
@@ -284,7 +254,7 @@ def knowledge_ask(
         description="Pergunta em linguagem natural sobre o que já foi salvo"
     ),
     top_k: int = Field(default=3, description="Quantos documentos usar como contexto"),
-) -> dict[str, Any]:
+) -> AskOk | ErrResult:
     """Responde a uma pergunta usando RAG sobre a base de conhecimento (busca + LLM)."""
     return knowledge.ask(query, top_k=top_k)
 
@@ -295,7 +265,7 @@ def knowledge_reindex(
         default=None,
         description="Modelo de embedding a usar (default: EMBEDDING_MODEL)",
     ),
-) -> dict[str, Any]:
+) -> ReindexOk | ErrResult:
     """Recalcula chunks e embeddings de todos os documentos (use após trocar de
     modelo de embedding)."""
     return knowledge.reindex(embedding_model=embedding_model)
@@ -313,7 +283,7 @@ def kb_list_documents(
         default=None, description="Filtra por categoria (video, audio, text, markdown)"
     ),
     tag: str | None = Field(default=None, description="Filtra por uma tag exata"),
-) -> dict[str, Any]:
+) -> ListDocumentsOk | ErrResult:
     """Lista o catálogo completo de documentos (paginado, mais recente
     primeiro), com filtros por categoria/origem/tag -- navegue por tudo que
     já está documentado, sem precisar de uma busca, para decidir o que
@@ -333,7 +303,7 @@ def kb_export_search(
         default=None, description="IDs diretos dos documentos (opcional)"
     ),
     limit: int = Field(default=20, description="Número máximo de resultados"),
-) -> dict[str, Any]:
+) -> ExportSearchOk | ErrResult:
     """Lista documentos para export -- por IDs, por busca, ou os mais recentes.
     Não grava nada; use a lista para confirmar e depois chamar kb_export."""
     return knowledge.export_search(query=query, ids=ids, limit=limit)
@@ -352,7 +322,7 @@ def kb_export(
             "Diretório de destino dos .md (os arquivos caem em <output_dir>/Knowledge/)"
         ),
     ),
-) -> dict[str, Any]:
+) -> ExportDocumentsOk | ErrResult:
     """Exporta os documentos selecionados como arquivos .md legíveis."""
     return knowledge.export_documents(ids=ids, output_dir=output_dir)
 
@@ -371,7 +341,10 @@ def main() -> None:
                 "host": settings.MCP_HOST,
                 "port": settings.MCP_PORT,
             }
-            if transport == "streamable-http":
+            # "http" is accepted above as an alias but FastMCP's actual
+            # transport name is "streamable-http" -- both need /mcp, or
+            # .mcp.json's http://.../mcp 404s (review finding, 2026-10-07).
+            if transport in ("streamable-http", "http"):
                 kwargs["path"] = "/mcp"
             mcp.run(transport=transport, **kwargs)
     else:

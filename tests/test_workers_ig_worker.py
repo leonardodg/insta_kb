@@ -4,6 +4,7 @@ as an injected callable."""
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -11,6 +12,19 @@ from typing import Any
 import pytest
 
 from workers import ig_worker as mod
+from workers import media_download
+
+
+def _ingest_unused(*args: Any, **kwargs: Any) -> dict[str, Any]:
+    """Fake `Ingester` pros testes que falham antes de chegar no ingest."""
+    return {}
+
+
+def _ingest_returning(payload: dict[str, Any]) -> Callable[..., dict[str, Any]]:
+    def _fake(*args: Any, **kwargs: Any) -> dict[str, Any]:
+        return payload
+
+    return _fake
 
 
 def test_classify_file():
@@ -106,7 +120,7 @@ def test_process_message_empty():
         download=lambda m: {},
         transcribe=None,
         describe=None,
-        ingest=lambda *a, **k: {},
+        ingest=_ingest_unused,
     ) == {"status": "error", "error": "empty message"}
 
 
@@ -116,7 +130,7 @@ def test_process_message_download_failure():
         download=lambda m: {"ok": False, "error": "404"},
         transcribe=None,
         describe=None,
-        ingest=lambda *a, **k: {},
+        ingest=_ingest_unused,
     )
     assert result == {"status": "error", "error": "404"}
 
@@ -146,7 +160,7 @@ def test_process_message_video_happy_path(monkeypatch: pytest.MonkeyPatch):
         categories=["Receitas"],
     )
     assert result["status"] == "done"
-    assert result["document_id"] == expected_document_id
+    assert result.get("document_id") == expected_document_id
     assert "fala transcrita" in ingest_calls["text"]
     assert ingest_calls["kwargs"]["extra_tags"] == ["colecao:Receitas"]
     assert ingest_calls["kwargs"]["title"] == "Receita boa"
@@ -160,10 +174,10 @@ def test_process_message_video_no_content_is_permanent_failure():
         transcribe=lambda fp: {"ok": True, "text": "", "language": "pt"},
         describe=None,
         read_screen=lambda fp: {"ok": True, "text": "", "descricao": ""},
-        ingest=lambda *a, **k: {"ok": True, "document_id": 1},
+        ingest=_ingest_returning({"ok": True, "document_id": 1}),
     )
     assert result["status"] == "error"
-    assert result["permanent"] is True
+    assert result.get("permanent") is True
 
 
 def test_process_message_image_describe_tags_category():
@@ -197,10 +211,10 @@ def test_process_message_image_all_describe_fail():
         download=lambda m: {"ok": True, "filepaths": ["/tmp/x.jpg"]},
         transcribe=None,
         describe=lambda fp: {"ok": False, "error": "vision down"},
-        ingest=lambda *a, **k: {"ok": True},
+        ingest=_ingest_returning({"ok": True}),
     )
     assert result["status"] == "error"
-    assert "vision down" in result["error"]
+    assert "vision down" in (result.get("error") or "")
 
 
 def test_process_message_video_caption_fallback_chain_with_screen_text():
@@ -296,7 +310,7 @@ def test_process_message_mixed_carousel_only_images_reach_vision_model():
         download=lambda m: {"ok": True, "filepaths": list(mixed)},
         transcribe=None,
         describe=describe_images_only,
-        ingest=lambda *a, **k: {"ok": True, "document_id": 99},
+        ingest=_ingest_returning({"ok": True, "document_id": 99}),
     )
     assert result["status"] == "done"
     assert seen == ["/tmp/a.jpg", "/tmp/c.jpg"]  # the .mp4s were never tried
@@ -319,7 +333,7 @@ def test_process_message_mixed_carousel_one_bad_photo_does_not_abort_others():
         download=lambda m: {"ok": True, "filepaths": list(mixed)},
         transcribe=None,
         describe=describe_one_bad,
-        ingest=lambda *a, **k: {"ok": True, "document_id": 1},
+        ingest=_ingest_returning({"ok": True, "document_id": 1}),
     )
     assert result["status"] == "done"
 
@@ -333,23 +347,23 @@ def test_process_message_carousel_all_images_fail_names_the_count():
         download=lambda m: {"ok": True, "filepaths": list(mixed)},
         transcribe=None,
         describe=lambda fp: {"ok": False, "error": "vision failed: 400"},
-        ingest=lambda *a, **k: {"ok": True},
+        ingest=_ingest_returning({"ok": True}),
     )
     assert result["status"] == "error"
-    assert "3" in result["error"]
+    assert "3" in (result.get("error") or "")
 
 
 def test_existing_media_empty_when_dir_missing(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
-    monkeypatch.setattr(mod, "IG_DOWNLOADS_DIR", tmp_path / "nope")
+    monkeypatch.setattr(media_download, "IG_DOWNLOADS_DIR", tmp_path / "nope")
     assert mod.existing_media("123") == []
 
 
 def test_existing_media_sorted_by_mtime(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
-    monkeypatch.setattr(mod, "IG_DOWNLOADS_DIR", tmp_path)
+    monkeypatch.setattr(media_download, "IG_DOWNLOADS_DIR", tmp_path)
     post_dir = tmp_path / "123"
     post_dir.mkdir()
     (post_dir / "b.jpg").write_bytes(b"2")

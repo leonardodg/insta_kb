@@ -1,10 +1,12 @@
 """Unit tests for src/api/main.py. RabbitMQ/Postgres are never touched: the
-underlying `mcp_server.server.ig_queue_status`/`ig_get_progress` functions
-are monkeypatched directly (same functions the MCP tools call -- the
-endpoints under test are thin wrappers around them, by design)."""
+underlying service functions (`services.ig_control.*` / `core.knowledge.*`
+-- the same ones the MCP tools call) are monkeypatched directly; the
+endpoints under test are thin wrappers around them, by design."""
 
 from __future__ import annotations
 
+import ast
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -25,6 +27,21 @@ DEFAULT_EXPORT_LIMIT = 20
 DEFAULT_LIST_LIMIT = 20
 
 
+def test_api_main_does_not_import_mcp_server():
+    """SOLID audit #2 (F5): REST and MCP are sibling adapters -- both import
+    the application layer (core/services), never each other."""
+    api_source = (
+        Path(__file__).resolve().parents[1] / "src" / "api" / "main.py"
+    ).read_text(encoding="utf-8")
+    imported: list[str] = []
+    for node in ast.walk(ast.parse(api_source)):
+        if isinstance(node, ast.Import):
+            imported.extend(alias.name for alias in node.names)
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            imported.append(node.module)
+    assert not [name for name in imported if name.split(".")[0] == "mcp_server"]
+
+
 def test_healthcheck():
     client = TestClient(api_main.app)
     resp = client.get("/healthcheck")
@@ -43,7 +60,7 @@ def test_ig_queue_status_endpoint_delegates(monkeypatch: pytest.MonkeyPatch):
             "consumers": QUEUE_CONSUMER_COUNT,
         }
 
-    monkeypatch.setattr(api_main.mcp_server, "ig_queue_status", fake_queue_status)
+    monkeypatch.setattr(api_main.ig_control, "queue_status", fake_queue_status)
     client = TestClient(api_main.app)
     resp = client.get("/ig/queue-status")
     assert resp.status_code == HTTP_OK
@@ -60,7 +77,7 @@ def test_ig_queue_status_endpoint_propagates_error(monkeypatch: pytest.MonkeyPat
     def fake_queue_status():
         return {"ok": False, "error": "ig_queue_status failed: broker unreachable"}
 
-    monkeypatch.setattr(api_main.mcp_server, "ig_queue_status", fake_queue_status)
+    monkeypatch.setattr(api_main.ig_control, "queue_status", fake_queue_status)
     client = TestClient(api_main.app)
     resp = client.get("/ig/queue-status")
     assert resp.status_code == HTTP_OK
@@ -76,7 +93,7 @@ def test_ig_progress_endpoint_delegates_with_default_last_n(
         captured["last_n"] = last_n
         return {"ok": True, "last": [], "documents_with_ig_pk": DOCUMENTS_WITH_IG_PK}
 
-    monkeypatch.setattr(api_main.mcp_server, "ig_get_progress", fake_progress)
+    monkeypatch.setattr(api_main.ig_control, "get_progress", fake_progress)
     client = TestClient(api_main.app)
     resp = client.get("/ig/progress")
     assert resp.status_code == HTTP_OK
@@ -97,7 +114,7 @@ def test_ig_progress_endpoint_forwards_last_n_query_param(
         captured["last_n"] = last_n
         return {"ok": True, "last": [], "documents_with_ig_pk": 0}
 
-    monkeypatch.setattr(api_main.mcp_server, "ig_get_progress", fake_progress)
+    monkeypatch.setattr(api_main.ig_control, "get_progress", fake_progress)
     client = TestClient(api_main.app)
     resp = client.get("/ig/progress", params={"last_n": CUSTOM_LAST_N})
     assert resp.status_code == HTTP_OK
@@ -105,25 +122,33 @@ def test_ig_progress_endpoint_forwards_last_n_query_param(
 
 
 def test_ig_worker_start_endpoint_delegates(monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.setattr(
-        api_main.mcp_server,
-        "ig_worker_start",
-        lambda: {"ok": True, "command": "start"},
-    )
+    captured: dict[str, str] = {}
+
+    def fake_publish(command: str) -> dict[str, Any]:
+        captured["command"] = command
+        return {"ok": True, "command": command}
+
+    monkeypatch.setattr(api_main.ig_control, "publish_control_command", fake_publish)
     client = TestClient(api_main.app)
     resp = client.post("/ig/worker/start")
     assert resp.status_code == HTTP_OK
     assert resp.json() == {"ok": True, "command": "start"}
+    assert captured["command"] == "start"
 
 
 def test_ig_worker_stop_endpoint_delegates(monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.setattr(
-        api_main.mcp_server, "ig_worker_stop", lambda: {"ok": True, "command": "stop"}
-    )
+    captured: dict[str, str] = {}
+
+    def fake_publish(command: str) -> dict[str, Any]:
+        captured["command"] = command
+        return {"ok": True, "command": command}
+
+    monkeypatch.setattr(api_main.ig_control, "publish_control_command", fake_publish)
     client = TestClient(api_main.app)
     resp = client.post("/ig/worker/stop")
     assert resp.status_code == HTTP_OK
     assert resp.json() == {"ok": True, "command": "stop"}
+    assert captured["command"] == "stop"
 
 
 def test_knowledge_search_endpoint_delegates(monkeypatch: pytest.MonkeyPatch):
@@ -132,13 +157,13 @@ def test_knowledge_search_endpoint_delegates(monkeypatch: pytest.MonkeyPatch):
     def fake_search(query: str, *, top_k: int) -> dict[str, Any]:
         captured["query"] = query
         captured["top_k"] = top_k
-        return {"ok": True, "results": []}
+        return {"ok": True, "query": query, "results": []}
 
-    monkeypatch.setattr(api_main.mcp_server.knowledge, "search", fake_search)
+    monkeypatch.setattr(api_main.knowledge, "search", fake_search)
     client = TestClient(api_main.app)
     resp = client.get("/knowledge/search", params={"query": "turbo lora"})
     assert resp.status_code == HTTP_OK
-    assert resp.json() == {"ok": True, "results": []}
+    assert resp.json() == {"ok": True, "query": "turbo lora", "results": []}
     assert captured["query"] == "turbo lora"
     assert captured["top_k"] == DEFAULT_TOP_K_SEARCH
 
@@ -149,15 +174,20 @@ def test_knowledge_ask_endpoint_delegates(monkeypatch: pytest.MonkeyPatch):
     def fake_ask(query: str, *, top_k: int) -> dict[str, Any]:
         captured["query"] = query
         captured["top_k"] = top_k
-        return {"ok": True, "answer": "..."}
+        return {"ok": True, "query": query, "answer": "...", "sources": []}
 
-    monkeypatch.setattr(api_main.mcp_server.knowledge, "ask", fake_ask)
+    monkeypatch.setattr(api_main.knowledge, "ask", fake_ask)
     client = TestClient(api_main.app)
     resp = client.post(
         "/knowledge/ask", params={"query": "o que é turbo lora?", "top_k": 2}
     )
     assert resp.status_code == HTTP_OK
-    assert resp.json() == {"ok": True, "answer": "..."}
+    assert resp.json() == {
+        "ok": True,
+        "query": "o que é turbo lora?",
+        "answer": "...",
+        "sources": [],
+    }
     assert captured["top_k"] == CUSTOM_TOP_K_ASK
 
 
@@ -184,9 +214,7 @@ def test_list_documents_endpoint_delegates(monkeypatch: pytest.MonkeyPatch):
             "documents": [],
         }
 
-    monkeypatch.setattr(
-        api_main.mcp_server.knowledge, "list_documents", fake_list_documents
-    )
+    monkeypatch.setattr(api_main.knowledge, "list_documents", fake_list_documents)
     client = TestClient(api_main.app)
     resp = client.get(
         "/knowledge/documents",
@@ -211,7 +239,7 @@ def test_kb_export_endpoint_delegates(monkeypatch: pytest.MonkeyPatch):
         captured["output_dir"] = output_dir
         return {"ok": True, "files": [{"id": i, "ok": True} for i in ids]}
 
-    monkeypatch.setattr(api_main.mcp_server, "kb_export", fake_kb_export)
+    monkeypatch.setattr(api_main.knowledge, "export_documents", fake_kb_export)
     client = TestClient(api_main.app)
     resp = client.post("/knowledge/export", params={"ids": [1, 2]})
     assert resp.status_code == HTTP_OK
@@ -228,14 +256,67 @@ def test_kb_export_search_endpoint_delegates(monkeypatch: pytest.MonkeyPatch):
         captured["query"] = query
         captured["ids"] = ids
         captured["limit"] = limit
-        return {"ok": True, "documents": []}
+        return {"ok": True, "total": 0, "documents": []}
 
-    monkeypatch.setattr(
-        api_main.mcp_server.knowledge, "export_search", fake_export_search
-    )
+    monkeypatch.setattr(api_main.knowledge, "export_search", fake_export_search)
     client = TestClient(api_main.app)
     resp = client.get("/knowledge/export/search", params={"query": "turbo"})
     assert resp.status_code == HTTP_OK
-    assert resp.json() == {"ok": True, "documents": []}
+    assert resp.json() == {"ok": True, "total": 0, "documents": []}
     assert captured["query"] == "turbo"
     assert captured["limit"] == DEFAULT_EXPORT_LIMIT
+
+
+def test_gpu_status_endpoint_free(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(
+        api_main.gpu_lock, "status", lambda: {"free": True, "holder": None}
+    )
+    client = TestClient(api_main.app)
+    resp = client.get("/gpu/status")
+    assert resp.status_code == HTTP_OK
+    assert resp.json() == {"free": True, "holder": None}
+
+
+def test_gpu_acquire_endpoint_success(monkeypatch: pytest.MonkeyPatch):
+    captured: dict[str, object] = {}
+
+    def fake_acquire(holder: str, timeout: float) -> str | None:
+        captured["holder"] = holder
+        captured["timeout"] = timeout
+        return "tok-123"
+
+    monkeypatch.setattr(api_main.gpu_lock, "acquire", fake_acquire)
+    client = TestClient(api_main.app)
+    resp = client.post("/gpu/acquire", json={"holder": "render seed=42", "timeout": 10})
+    assert resp.status_code == HTTP_OK
+    assert resp.json() == {"ok": True, "token": "tok-123", "held_by": None}
+    assert captured == {"holder": "render seed=42", "timeout": 10}
+
+
+def test_gpu_acquire_endpoint_timeout_reports_holder(monkeypatch: pytest.MonkeyPatch):
+    def fake_timed_out_acquire(holder: str, timeout: float) -> str | None:
+        return None
+
+    def fake_status() -> dict[str, bool | str | None]:
+        return {"free": False, "holder": "someone else"}
+
+    monkeypatch.setattr(api_main.gpu_lock, "acquire", fake_timed_out_acquire)
+    monkeypatch.setattr(api_main.gpu_lock, "status", fake_status)
+    client = TestClient(api_main.app)
+    resp = client.post("/gpu/acquire", json={"holder": "me", "timeout": 0.1})
+    assert resp.status_code == HTTP_OK
+    assert resp.json() == {"ok": False, "token": None, "held_by": "someone else"}
+
+
+def test_gpu_release_endpoint_delegates(monkeypatch: pytest.MonkeyPatch):
+    captured: dict[str, object] = {}
+
+    def fake_release(token: str) -> None:
+        captured["token"] = token
+
+    monkeypatch.setattr(api_main.gpu_lock, "release", fake_release)
+    client = TestClient(api_main.app)
+    resp = client.post("/gpu/release", params={"token": "tok-123"})
+    assert resp.status_code == HTTP_OK
+    assert resp.json() == {"ok": True}
+    assert captured["token"] == "tok-123"

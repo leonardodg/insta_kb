@@ -4,11 +4,12 @@ embed/chat are monkeypatched with fakes."""
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 import pytest
 
-from core.knowledge import knowledge
+from core.knowledge import knowledge, query
 
 
 class FakeSession:
@@ -80,17 +81,17 @@ def test_ingest_text_happy_path(monkeypatch: pytest.MonkeyPatch):
 
     saved_kwargs: dict[str, Any] = {}
 
-    def fake_save_document(sess: Any, **kwargs: Any) -> FakeDoc:
-        saved_kwargs.update(kwargs)
+    def fake_save_document(sess: Any, draft: Any, **kwargs: Any) -> FakeDoc:
+        saved_kwargs.update(draft)
         return FakeDoc(
-            title=kwargs["title"],
-            summary=kwargs["summary"],
-            tutorial=kwargs["tutorial"],
-            tags=kwargs["tags"],
-            source_url=kwargs["source_url"],
-            platform=kwargs["platform"],
-            type=kwargs["type"],
-            transcription_text=kwargs["transcription_text"],
+            title=draft["title"],
+            summary=draft["summary"],
+            tutorial=draft["tutorial"],
+            tags=draft["tags"],
+            source_url=draft["source_url"],
+            platform=draft["platform"],
+            type=draft["type"],
+            transcription_text=draft["transcription_text"],
         )
 
     monkeypatch.setattr(knowledge.db, "save_document", fake_save_document)
@@ -154,11 +155,28 @@ def test_search_delegates_to_db(monkeypatch: pytest.MonkeyPatch):
     assert session.closed is True
 
 
+def test_search_db_failure_returns_ok_false_not_raise(monkeypatch: pytest.MonkeyPatch):
+    # search/ask are the most heavily used read tools -- a transient DB blip
+    # must come back as {"ok": False, ...}, not an uncaught exception that
+    # propagates as a raw 500/traceback through the MCP tool / REST endpoint.
+    session = FakeSession()
+    monkeypatch.setattr(knowledge.db, "get_session", lambda: session)
+
+    def boom(sess: Any, query: str, embed_fn: Any, top_k: int) -> Any:
+        raise RuntimeError("db down")
+
+    monkeypatch.setattr(knowledge.db, "search_documents", boom)
+    result = knowledge.search("python")
+    assert result["ok"] is False
+    assert "db down" in result["error"]
+    assert session.closed is True
+
+
 def test_ask_no_results_returns_canned_answer(monkeypatch: pytest.MonkeyPatch):
     def _search(query: str, top_k: int = 3) -> dict[str, Any]:
         return {"ok": True, "query": query, "results": []}
 
-    monkeypatch.setattr(knowledge, "search", _search)
+    monkeypatch.setattr(query, "search", _search)
     result = knowledge.ask("pergunta qualquer")
     assert result["ok"] is True
     assert result["sources"] == []
@@ -180,7 +198,7 @@ def test_ask_uses_llm_chat_with_context(monkeypatch: pytest.MonkeyPatch):
             ],
         }
 
-    monkeypatch.setattr(knowledge, "search", _search)
+    monkeypatch.setattr(query, "search", _search)
     captured: dict[str, Any] = {}
 
     def fake_chat(prompt: str, **k: Any) -> str:
@@ -262,6 +280,53 @@ def test_export_documents_accepts_subdirectory_of_output(
     monkeypatch.setattr(session, "execute", _execute, raising=False)
     result = knowledge.export_documents([999], output_dir="output/kb-export/sub")
     assert result["ok"] is True
+
+
+def test_export_documents_writes_to_the_validated_path_not_cwd(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    # Regression test: an earlier version validated `resolved` (anchored on
+    # PROJECT_ROOT) but then called vault.write_markdown_copy(doc, output_dir)
+    # with the RAW string -- which vault resolves against the process's CWD,
+    # not PROJECT_ROOT. The check and the actual write used two different
+    # bases that only agreed by accident (CWD == PROJECT_ROOT in dev/docker).
+    # This test forces the FakeDoc to actually be found (so the write call is
+    # reached, unlike the accept-path test above) and asserts the exact
+    # argument vault.write_markdown_copy receives.
+    session = FakeSession()
+    monkeypatch.setattr(knowledge.db, "get_session", lambda: session)
+    doc = FakeDoc(title="Found doc")
+
+    class FakeExecResult:
+        def scalars(self) -> "FakeExecResult":
+            return self
+
+        def all(self) -> list[FakeDoc]:
+            return [doc]
+
+    def _execute(stmt: Any) -> FakeExecResult:
+        return FakeExecResult()
+
+    monkeypatch.setattr(session, "execute", _execute, raising=False)
+
+    captured: dict[str, Any] = {}
+
+    def fake_write(document: dict[str, Any], vault_path: str) -> dict[str, Any]:
+        captured["vault_path"] = vault_path
+        return {"ok": True, "skipped": False, "path": f"{vault_path}/x.md"}
+
+    monkeypatch.setattr(knowledge.vault, "write_markdown_copy", fake_write)
+
+    result = knowledge.export_documents([1], output_dir="output/kb-export/sub")
+
+    assert result["ok"] is True
+    assert result["files"][0]["ok"] is True
+    expected_path = Path(knowledge.settings.PROJECT_ROOT) / "output/kb-export/sub"
+    expected = str(expected_path.resolve())
+    assert captured["vault_path"] == expected
+    # The bug this guards against: a raw relative string instead of the
+    # PROJECT_ROOT-anchored absolute path.
+    assert captured["vault_path"] != "output/kb-export/sub"
 
 
 def test_export_documents_missing_id_reported_without_aborting(

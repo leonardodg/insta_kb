@@ -26,6 +26,7 @@ from typing import Any, cast
 
 import pika
 
+from core.contracts import QueueStatusOk
 from core.settings.config import settings
 
 logger = logging.getLogger(__name__)
@@ -195,7 +196,7 @@ def dead_letter(channel: Any, properties: Any, body: bytes) -> None:
     )
 
 
-def queue_status(channel: Any) -> dict[str, Any]:
+def queue_status(channel: Any) -> QueueStatusOk:
     """Passive-declare ig.saved + DLQ and report message/consumer counts."""
     work = channel.queue_declare(queue=QUEUE, durable=True, passive=True)
     dead = channel.queue_declare(queue=DLQ, durable=True, passive=True)

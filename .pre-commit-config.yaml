@@ -2,7 +2,10 @@ repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
     hooks:
+      # mkdocs.yml uses !!python/name tags (pymdownx fence format), which the
+      # default safe loader rejects; still syntax-checked by mkdocs build.
       - id: check-yaml
+        exclude: ^mkdocs\.yml$
       - id: check-added-large-files
       - id: end-of-file-fixer
       - id: trailing-whitespace

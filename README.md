@@ -7,13 +7,14 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-1de9d6.svg)](LICENSE)
 [![Python 3.14+](https://img.shields.io/badge/python-3.14+-3776ab.svg)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/API-FastAPI-009688.svg)](https://fastapi.tiangolo.com/)
-[![MCP](https://img.shields.io/badge/MCP-FastMCP%202.x-8a2be2.svg)](https://gofastmcp.com)
+[![MCP](https://img.shields.io/badge/MCP-FastMCP%204.x-8a2be2.svg)](https://gofastmcp.com)
 [![pgvector](https://img.shields.io/badge/Postgres-pgvector-336791.svg)](https://github.com/pgvector/pgvector)
-[![Tests](https://img.shields.io/badge/tests-136%20passing-1de9d6.svg)](tests/)
+[![Tests](https://img.shields.io/badge/tests-206%20passing-1de9d6.svg)](tests/)
 [![Types](https://img.shields.io/badge/pyright-strict-2f73bf.svg)](pyrightconfig.json)
 
-**[REST API docs (Swagger)](http://127.0.0.1:8085/docs)** ·
-**[ReDoc](http://127.0.0.1:8085/redoc)** ·
+**[Docs](https://leonardodg.github.io/insta_kb/)** ·
+**[REST API docs (Swagger)](http://127.0.0.1:8084/docs)** ·
+**[ReDoc](http://127.0.0.1:8084/redoc)** ·
 **[MCP tools](#-mcp-tools)** ·
 **[Installation](#-quick-start)**
 
@@ -57,7 +58,7 @@ test suite.
 - 🔒 **Fully local** — Postgres, RabbitMQ, the LLM and the worker all run on
   your machine; Instagram and (optionally) YouTube are the only outbound
   calls
-- ✅ **136 tests, pyright strict, bandit, pip-audit** — all clean, enforced by
+- ✅ **206 tests, pyright strict, bandit, pip-audit** — all clean, enforced by
   `pre-commit`
 
 ---
@@ -96,19 +97,19 @@ The difference here is infrastructure, not just surface area:
 |---|---|
 | **instagrapi** | Authenticated enumeration and download of saved posts (session-based, no password) |
 | **yt-dlp** | Fallback download path for public posts |
-| **faster-whisper** | Local, GPU-accelerated transcription with timestamps |
+| **faster-whisper** + **av 18.1.0** | Local, GPU-accelerated transcription with timestamps |
 
 ### Interfaces
 | Technology | Role |
 |---|---|
-| **FastMCP 2.x** | MCP server — 15 tools, stdio transport |
-| **FastAPI** | REST API — 10 endpoints, automatic Swagger UI + ReDoc |
+| **FastMCP 4.x** | MCP server — 15 tools, streamable-http (`:8849`) |
+| **FastAPI** | REST API — 13 endpoints, automatic Swagger UI + ReDoc |
 | **pydantic-settings** | Typed, validated configuration from a single `.env` |
 
 ### Quality
 | Technology | Role |
 |---|---|
-| **pytest** | 136 tests, every external service mocked at the boundary |
+| **pytest** | 206 tests, every external service mocked at the boundary |
 | **ruff** | Lint + format, strict rule set (E, F, I, W, PL) |
 | **pyright** | Strict type checking — `src/` has zero errors |
 | **bandit** + **pip-audit** | Security linting and dependency CVE scanning |
@@ -140,10 +141,15 @@ knowledge.ingest_text → chunk → embed (mxbai-embed-large) → Postgres + pgv
 
 Both interfaces call the exact same functions in `core.knowledge` /
 `mcp_server.server` — there is no business logic in the API layer, and none
-duplicated between the two surfaces. See the module docstring in
+duplicated between the two surfaces. Every cross-module boundary is typed in
+`core/contracts.py` as `*Ok | ErrResult` pairs, so both surfaces return the
+same shapes and pyright enforces it. See the module docstring in
 `src/api/main.py` for exactly which tools are MCP-only and why
 (`ig_sync_saved`, `knowledge_ingest_*`, `knowledge_reindex` — long-running or
 too easy to trigger by accident over plain HTTP).
+
+Diagrams (structure, stack, flow — Mermaid): **[docs/ARQUITETURA.md](docs/ARQUITETURA.md)**,
+rendered on the **[docs site](https://leonardodg.github.io/insta_kb/ARQUITETURA/)**.
 
 ---
 
@@ -174,11 +180,11 @@ uv sync --all-groups
 docker compose --env-file .env -f .devcontainer/docker-compose.yml up -d postgres rabbitmq
 
 # 3. Run the test suite
-uv run pytest -q                      # 136 passed, no services needed — everything's mocked
+uv run pytest -q                      # 206 passed, no services needed — everything's mocked
 
 # 4. Start the REST API
-uv run uvicorn api.main:app --reload --app-dir src --port 8085
-# → http://127.0.0.1:8085/docs  (Swagger UI, interactive)
+uv run uvicorn api.main:app --reload --app-dir src --port 8084
+# → http://127.0.0.1:8084/docs  (Swagger UI, interactive)
 
 # 5. Enqueue your saved posts and start the worker
 uv run python -c "from mcp_server import server; print(server.ig_sync_saved())"
@@ -194,7 +200,9 @@ doing.
 
 ## 🔌 MCP tools
 
-Registered in `.mcp.json` as `insta-kb` (`uv run python src/mcp_server/server.py`, `MCP_TRANSPORT=stdio`).
+Registered in `.mcp.json` as `insta-kb` over streamable-http
+(`http://127.0.0.1:8849/mcp`, served by the `mcp` container). Local stdio
+still works: `MCP_TRANSPORT=stdio uv run python src/mcp_server/server.py`.
 
 ### Instagram sync
 | Tool | What it does |
@@ -223,7 +231,7 @@ Registered in `.mcp.json` as `insta-kb` (`uv run python src/mcp_server/server.py
 
 ## 🌐 REST API
 
-10 endpoints, `src/api/main.py`, every one a thin wrapper around the same
+13 endpoints, `src/api/main.py`, every one a thin wrapper around the same
 function its MCP-tool counterpart calls. Full interactive docs at `/docs`
 (Swagger) and `/redoc` once the server is running.
 
@@ -248,10 +256,10 @@ accident over a plain `POST`).
 
 ```bash
 # Browse the catalog, newest first, only Instagram videos
-curl "http://127.0.0.1:8085/knowledge/documents?platform=instagram&doc_type=video&limit=10"
+curl "http://127.0.0.1:8084/knowledge/documents?platform=instagram&doc_type=video&limit=10"
 
 # Ask a question, answered only from what you've saved
-curl -X POST "http://127.0.0.1:8085/knowledge/ask" --data-urlencode "query=o que eu salvei sobre docker volumes?"
+curl -X POST "http://127.0.0.1:8084/knowledge/ask" --data-urlencode "query=o que eu salvei sobre docker volumes?"
 ```
 
 ---
@@ -300,25 +308,30 @@ insta_kb/
 ├── .devcontainer/docker-compose.yml   # Postgres (pgvector) + RabbitMQ
 ├── src/
 │   ├── core/
+│   │   ├── contracts.py           # typed contracts: *Ok | ErrResult pairs per boundary
 │   │   ├── settings/config.py     # pydantic-settings, single source of .env
-│   │   └── knowledge/knowledge.py # use cases: search, ask, ingest_*, export*
+│   │   └── knowledge/             # use cases: ingest / query / export + knowledge.py facade
+│   ├── services/
+│   │   └── ig_control.py          # worker start/stop control commands
 │   ├── infra/
 │   │   ├── db/                    # SQLAlchemy models + repository
-│   │   ├── llm/                   # Ollama client (chat, embed, vision)
+│   │   ├── llm/                   # Ollama client (chat, embed, vision) + model registry
 │   │   ├── queue/                 # RabbitMQ publisher/consumer
 │   │   ├── instagram/             # instagrapi client, saved-posts enumeration
 │   │   ├── downloader/            # yt-dlp fallback
 │   │   ├── transcriber/           # faster-whisper
+│   │   ├── gpu_lock/              # one-GPU-at-a-time lock across processes
+│   │   ├── log/                   # logging config
 │   │   └── vault/                 # Obsidian .md export
-│   ├── workers/ig_worker.py       # the daemon: download → transcribe/describe → ingest
+│   ├── workers/                   # the daemon: consumer → ig_worker → media/text/screen handlers
 │   ├── mcp_server/server.py       # 15 @mcp.tool() definitions
-│   └── api/main.py                # FastAPI app, 10 endpoints
+│   └── api/main.py                # FastAPI app, 13 endpoints
 ├── scripts/
 │   ├── ig_pendentes.py            # which documents still need reprocessing
 │   ├── ig_reprocessar.py          # re-run the pipeline on existing media, --aplicar to write
 │   ├── ig_relatorio.sh            # read-only operational report (queue, db, disk, GPU)
 │   └── ig_rodar_tudo.sh           # chain reprocess → resume sync (they share the GPU)
-├── tests/                         # 136 tests, one file per src/ module
+├── tests/                         # 206 tests, one file per src/ module
 ├── typings/instagrapi/            # type stubs (instagrapi ships untyped)
 └── docs/HANDOFF.md                # project state: what's done, what's pending, bugs found
 ```
@@ -350,10 +363,8 @@ Already checked in as `.mcp.json`, picked up on trust:
 {
   "mcpServers": {
     "insta-kb": {
-      "command": "uv",
-      "args": ["run", "python", "src/mcp_server/server.py"],
-      "cwd": "/home/leodg/localhost/insta_kb",
-      "env": { "MCP_TRANSPORT": "stdio" }
+      "type": "http",
+      "url": "http://127.0.0.1:8849/mcp"
     }
   }
 }

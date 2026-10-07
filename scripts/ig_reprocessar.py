@@ -30,6 +30,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from sqlalchemy import create_engine, text
 
+from core.contracts import DocumentDraft
 from core.knowledge import knowledge
 from infra import db
 from infra.instagram import ig_sync
@@ -268,24 +269,27 @@ for did in IDS:
             # voltaria invisível para a busca.
             s2 = db.get_session()
             try:
+                draft: DocumentDraft = {
+                    "type": d["type"],
+                    "source_url": d["source_url"],
+                    "platform": "instagram",
+                    "title": d["title"],
+                    "language": d.get("language") or "pt",
+                    "transcription_text": d["transcription_text"],
+                    "summary": d["summary"],
+                    "tutorial": d["tutorial"],
+                    "objectives": d["objectives"],
+                    "tags": d["tags"],
+                    "raw_file_path": d.get("raw_file_path"),
+                    "llm_provider": None,
+                    "llm_model": None,
+                    "ig_pk": pk,
+                }
                 rec = db.save_document(
                     s2,
-                    type=d["type"],
-                    source_url=d["source_url"],
-                    platform="instagram",
-                    title=d["title"],
-                    language=d.get("language") or "pt",
-                    transcription_text=d["transcription_text"],
-                    summary=d["summary"],
-                    tutorial=d["tutorial"],
-                    objectives=d["objectives"],
-                    tags=d["tags"],
-                    raw_file_path=d.get("raw_file_path"),
-                    llm_provider=None,
-                    llm_model=None,
+                    draft,
                     embed_fn=llm.embed,
                     embedding_model=llm.EMBEDDING_MODEL,
-                    ig_pk=pk,
                 )
                 print(
                     f"  *** FALHA AO REGRAVAR: {novo.get('error')} — "

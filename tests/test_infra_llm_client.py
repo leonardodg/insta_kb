@@ -162,6 +162,42 @@ def test_chat_unknown_provider_raises():
         client.chat("x", provider="bogus")
 
 
+# SOLID audit #1 (F3): provider dispatch duplicated as if/elif in both
+# _generate_raw_with_retries and chat -- 4 edit points per new provider.
+# A single registry makes it one.
+def test_providers_registry_is_the_single_dispatch_point():
+    assert hasattr(client, "PROVIDERS")
+    registry: dict[str, Any] = client.PROVIDERS
+    assert set(registry) == {"ollama", "openai-compatible"}
+
+
+def test_registering_a_provider_reaches_both_dispatch_points(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    calls: list[tuple[str, str, bool]] = []
+    # Schema-valid body: "resumo" is what makes the retry loop break after
+    # the first attempt, keeping the call accounting exact.
+    valid_body = '{"resumo": "r", "tutorial": "t", "objetivos": ["a"], "tags": ["t1"]}'
+
+    def fake_generate(prompt: str, model: str, *, force_json: bool) -> str:
+        calls.append((prompt, model, force_json))
+        return valid_body
+
+    monkeypatch.setitem(client.PROVIDERS, "fake", fake_generate)
+
+    assert client.chat("oi", provider="fake", model="m") == valid_body
+    result = client.generate_structured("conteudo de teste", provider="fake", model="m")
+    assert result["ok"] is True
+    assert result["resumo"] == "r"
+    # chat is free-text (force_json=False); the structured path forces JSON
+    # and wraps the transcription in the summary prompt.
+    assert calls[0] == ("oi", "m", False)
+    dois_caminhos = ("chat", "estruturado")
+    assert len(calls) == len(dois_caminhos)
+    assert calls[1][0].startswith("Você é") or "conteudo" in calls[1][0]
+    assert calls[1][1:] == ("m", True)
+
+
 def test_generate_structured_happy_path(monkeypatch: pytest.MonkeyPatch):
     body = (
         '{"resumo": "um resumo", "tutorial": "um tutorial", '

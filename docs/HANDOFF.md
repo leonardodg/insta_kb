@@ -10,6 +10,81 @@ Plano original desta migração (todas as fases e decisões):
 Ver também `minimax-video-factory/docs/HANDOFF.md`, seção "EM ANDAMENTO
 2026-10-06", para o lado que ainda falta limpar no projeto de origem.
 
+## 🔄 EM ANDAMENTO 2026-10-07: atualização completa (deps/Docker/MCPs/testes)
+
+Plano mestre: `~/.claude/plans/vamos-atualizar-a-lista-groovy-sun.md` — cópias
+versionadas em `docs/PLANO_ATUALIZACAO.md` (este repo) e no minimax-video-factory.
+**Branch: `update/deps-2026-10`** (PR no fim). Execução inline, 10 tasks
+(0-9), status da tabela no próprio plano.
+
+| Task | Descrição | Status | Evidência |
+|---|---|---|---|
+| 0 | Commits pendentes + baseline + cópias do plano | ✅ | baseline `168 passed` (+9 no minimax); commits `e2095eb` (fail-soft+export), `9aaa257` (plano) |
+| 1 | Deps insta_kb | ✅ | `av==18.1.0`, `instagrapi>=3.0.20`, `fastmcp>=4.0.11`, `fastapi[standard]>=0.142.2`; lock: uvicorn 0.54.0, ruff 0.16.10, pyright 1.1.414, pydantic 2.13.5; suíte 168 passed + smoke `decode_audio` OK; review "with fixes" aplicado (telemetry verificado, floor fastapi ajustado); commit `58e8093` |
+| 2 | Deps minimax | ✅ | `fastmcp>=4.0.11`+`av==18.1.0` (pin novo); commits `715216e`+`83c8354` |
+| 3 | ComfyUI v0.39.1 + nodes + pesos | ✅ | v0.39.1 + nodes atualizados + 3 pesos novos; render turbo validado; commit `ae944c1` (minimax) |
+| 4 | Docker insta_kb (Parte B) | ✅ | venv isolado em `/opt/venv` (bf824e5+02140f1, achado real: `/app/.venv` quebrava o `.venv` do host); rede `insta-kb-net` + serviços `api`/`worker`/`mcp` (`984e03c`); Ollama fica no HOST (processo, não container) via `host.docker.internal`, coexistindo por ora com o que seria containerizado depois (decisão do usuário); `DATABASE_URL`/`RABBITMQ_URL` completas (não só `*_HOST` -- `Settings` não reflow a partir de env); comandos via venv direto, não `uv run`; `.mcp.json` → HTTP; worker containerizado validado com post real da fila (pausado/retomado por controle do usuário) |
+| 5 | MCPs do OpenCode | ✅ | inventário + `.mcp.json`→HTTP (`streamable-http :8849`); testes reais desta sessão: **7 tools insta-kb** verdes com shapes exatos Ok/Err (skip documentado: `ig_worker_start/stop` com worker ativo, `knowledge_reindex` custosa — cobertas por unit); `MODELS_DIR` stale corrigido no `opencode.json` (restart do OpenCode pendente, ação do usuário) |
+| 6 | Matriz de testes | ✅ | baselines 168+9 → **206+11**; suítes ×2 (pytest/ruff/pyright/bandit/pip-audit + `unit_privacy`); tools MCP exercitadas de verdade: insta-kb 7 + minimax remote 3 + uv stdio 2; `_uv_health` ok:false = MODELS_DIR stale (corrigido); incidente de render documentado no HANDOFF do minimax |
+| 7 | Fila do insta_kb (329 msgs) | ✅ (drenando) | drenagem inicial 329→322 (7 ingests e2e, docs 3713→3719, 0 errors/0 dead); após o fix do Ollama containerizado a fila real drenou sozinha **322→193 ready** (snapshot da MCP `ig_queue_status`: 193 ready, 0 dead, 1 consumer ativo); pausável/retomável via `ig_worker_start`/`POST /ig/worker/start` |
+| 8 | Documentação | ✅ | README sweep (136→206, FastMCP 4.x, portas 8085→8084, transporte HTTP do `.mcp.json`, seção Claude Code, av 18.1.0); `.env-example` limpo de restos do minimax; `mkdocs build --strict` verdes ×2; commits `53a92ae` (insta_kb) + `fe4fc82` (minimax) |
+| 9 | Diagramas | ✅ | `docs/ARQUITETURA.md` (3 Mermaid: estrutura/stack/fluxo) + `docs/index.md` + `mkdocs.yml` + `.github/workflows/docs.yml` (build --strict + deploy Pages + assert sem fontes no artefato); link "Arquitetura" no README; render `<pre class="mermaid">` ×3 verificado; graphify não solicitado |
+| 10 | Auditoria SOLID (avaliação) | ✅ | relatório `docs/SOLID_AUDIT.md` (314 l., 0 crítico); veredito **ciclo futura**; ver seção abaixo |
+
+Regra de GPU durante toda a execução: 1 job (render/transcrição/Ollama) por
+vez; `av==18.1.0` fixo nos 2 repos; nenhum download de peso sem OK.
+
+### Task 7 (fila ig.saved) — drenagem proposital parcial, 2026-10-07
+
+Decisão do usuário (pergunta do plano, Step 3): **parar após validar**, não
+drenar tudo de uma vez — a fila pode ser retomada depois. A Task 7 consumia
+"stack Docker (Task 4)/API (Task 4)", mas o caminho provado do HANDOFF
+(`uv run python -m workers.ig_worker`, verificado em "Verificação
+end-to-end" abaixo) funcionou sem a API 8084: **worker no host**, desvio
+registrado. A outra sessão da Task 4 já adicionou `ffmpeg + cuda libs pro
+worker` no devcontainer (`02140f1`) — na próxima rodada subir em container.
+
+- **Pré-check de GPU:** ComfyUI segurava ~10 GB ociosos com modelos em
+  cache; liberados via `POST :8188/free {"unload_models":true,...}`
+  (VRAM 10668→908 MiB). Whisper `small` em cuda+fp16 coube de boa.
+- **Execução 12:56:11→13:05:36** (~9 min): 7 posts e2e completos
+  (download IG → whisper cuda ~11s → 2× Ollama → ingest KB), cadência
+  ~70s/post, **0 erros, 0 dead**. Docs 3713→3719; total KB **3411**;
+  doc mais recente com summary+tutorial+transcription (pipeline inteiro).
+- **Parada:** `SIGTERM` no pid — graceful; unacked voltou p/ ready.
+  Fila final: **322 ready, 0 unacked, 0 consumers, 0 dead.**
+- **Retomar:** `cd ~/localhost/insta_kb && nohup uv run python -m
+  workers.ig_worker > /tmp/opencode/ig_worker.log 2>&1 &` (GPU livre
+  primeiro: conferir `nvidia-smi`; regra de 1 job GPU/vez — a fila drena
+  ~6h30 e nesse período renders do minimax ficam em espera).
+- Monitorar sem API: `rabbitmqctl list_queues name messages consumers`
+  + `grep ingested /tmp/opencode/ig_worker.log` + MCP `ig_queue_status`.
+
+
+
+- **`[tool.uv] environments = ["sys_platform != 'android'"]`** (desvio do
+  plano, obrigatório): `instagrapi>=3.0.20` trava `pydantic==2.12.5` no
+  marker Android, conflitando com `pydantic>=2.13.4` do projeto — o lock
+  falhava para todo ambiente. Servidor Linux only; Android nunca é alvo de
+  deploy. É a solução sugerida pelo próprio uv. Efeito: tentativa de
+  resolver em Android falha alto em vez de silenciosamente.
+- **Telemetry do FastAPI 0.142 (default-on) — decisão: manter o default.**
+  Verificado em runtime nesta sessão: sem `OTEL_*` no ambiente,
+  `app._native_telemetry.enabled()` → **False** (middleware nem cria spans,
+  zero overhead por request) — `.env`/`.env.example`/shell não têm
+  `OTEL_*`. Se alguém definir `OTEL_EXPORTER_OTLP_ENDPOINT` depois, é
+  exatamente a intenção (exportar) que o auto_configure atende. Nenhuma
+  mudança de código.
+- **`fastapi[standard]>=0.142.2`** (floor ajustado após code review): o
+  floor antigo `>=0.141.1` permitiria re-lock voltar para 0.141.1.
+- **`uv.lock` revision 3→5** (novo campo `supported-markers`): qualquer
+  imagem Docker/venv que consuma este lock precisa de **uv ≥ 0.12.x** —
+  checar nos builds das Tasks 3/4.
+- **`agent-detector`** entrou no venv via `fastapi-cloud-cli` (extra
+  `fastapi[standard]`), não é importado pelo app, pip-audit limpo — se o
+  next reviewer de supply-chain estranhar, é daí. Escape hatch:
+  `fastapi[standard-no-fastapi-cloud-cli]`.
+
 ## ✅ Commit real em 2026-10-06: `a773f2c` em `migrate/instagram-kb-from-video-factory`
 
 Primeiro commit de código de verdade do projeto (antes só tinha `app/main.py`
@@ -338,6 +413,14 @@ Python 3.14, que ainda tem o parâmetro). Testado de verdade com
 `faster-whisper` transcrevendo um `.mp4` sintético (CPU, para não disputar
 a GPU que um render real do video-factory ocupava nesse instante).
 
+> **Atualização 2026-10-07 (sessão do plano de atualização):** o pin subiu
+> para **`av==18.1.0`** — a mais recente que funciona. Teste real em venv
+> py3.14 com decode de wav: 15.1.0/17.1.0/18.0.0/18.1.0 ✅ ·
+> 19.0.0/19.0.1 ❌ (`TypeError: metadata_errors` removido). `faster-whisper`
+> latest continua 1.2.1 sem fix (declara `av>=11` sem teto — o pin é o que
+> protege). Mesmo pin aplicado no minimax-video-factory (ele nem declarava
+> `av`).
+
 **Worker parado depois da verificação** — processar as 329 mensagens reais
 seria uma rodada de produção, não uma verificação; fica para quando o
 usuário decidir rodar de propósito. Fila confirmada intacta (329 ready, 0
@@ -381,3 +464,338 @@ vieram de verificação real, não de leitura de relatório).
 - API REST: paginação por página normal (`limit`/`offset`), separável por
   `platform`/`doc_type`/`tag` — pedido explícito do usuário ("Paginado
   separados por categorias, tags estas coisas").
+
+## 2026-10-07 — revalidação pós-paralelo (av==18.1.0, teste faltante, database.db*)
+
+Sessão retomada depois do usuário ter iniciado, em paralelo (outro terminal,
+mesma working directory, branch `update/deps-2026-10`), a atualização de
+deps documentada em `docs/PLANO_ATUALIZACAO.md`. Reconciliação feita:
+
+- **`av==18.1.0`** (trocado de `15.1.0` pela atualização paralela) verificado
+  de novo, independentemente: `av.open(..., metadata_errors="ignore")` ainda
+  aceita o parâmetro (erro foi `InvalidDataError` de arquivo inválido, não
+  `TypeError`), e uma transcrição real via `faster_whisper` (CPU, para não
+  disputar GPU com o render do video-factory em andamento) terminou sem erro.
+  Não reintroduz o bug que a mudança para 15.1.0 tinha corrigido.
+- Faltava o teste `test_search_db_failure_returns_ok_false_not_raise` (cobre
+  `search()` no fail-soft do commit `e2095eb`) — commitado agora
+  (`766384a`, na branch `update/deps-2026-10`, que já era a branch
+  checked-out).
+- `database.db`/`-shm`/`-wal` (sqlite vazio, sem schema, não referenciado em
+  código) — adicionados ao `.gitignore` (regra já estava em
+  `docs/PLANO_ATUALIZACAO.md`: "nunca é commitado", mas o `.gitignore` não
+  cumpria). Arquivos continuam no disco — remoção bloqueada pelo classificador
+  de permissões desta sessão; não são segredo nem dado real, é lixo de alguma
+  conexão sqlite default.
+- Suíte completa no HEAD atual (`766384a`): `pytest` 169→170 passed, `ruff`/
+  `pyright`/`bandit`/`pip-audit` limpos.
+
+**Não toquei** no restante do WIP de `update/deps-2026-10` (bump fastmcp,
+instagrapi, fastapi, lock --upgrade) — é o plano do usuário em andamento,
+fora do escopo desta reconciliação.
+
+## 2026-10-07 — Task 4 (docs/PLANO_ATUALIZACAO.md): venv do devcontainer quebrava o `.venv` do host
+
+Ao preparar os novos serviços `api`/`worker`/`mcp` (isolamento em Docker,
+Task 4), achado um bug real no devcontainer interativo que já existia antes
+desta sessão: `.devcontainer/Dockerfile` colocava o venv em `/app/.venv`,
+e `/app` é bind-mount do host em runtime (`volumes: [../:/app]`). Dois
+problemas independentes:
+
+1. Rodar `uv run`/`uv sync` **dentro** do container reescrevia o symlink
+   `/app/.venv` (que no namespace do container apontava pra um cache
+   inexistente) para um caminho que só existe dentro do container —
+   quebrando silenciosamente o `.venv` do HOST na próxima vez que o usuário
+   rodasse `uv`/`pytest` fora do container. Reproduzido e corrigido na hora
+   com `uv sync` no host (169 testes voltaram a passar).
+2. Mesmo tentando compartilhar via bind-mount do cache do host no mesmo path
+   absoluto, o `pyvenv.cfg` do venv grava o caminho do interpretador do HOST
+   (`/usr/bin/python3`), que não existe em nenhuma imagem de container — e
+   o venv carrega extensões compiladas (psycopg, av/PyAV, ctranslate2,
+   pydantic-core) contra libs do host, não portáveis entre bases Debian
+   diferentes. Um venv genuinamente compartilhado host↔container não é
+   seguro de montar assim.
+
+**Fix** (`bf824e5` + follow-up do review): venv isolado em `/opt/venv`,
+inteiramente dentro da imagem, nunca no bind-mount. Decisão consciente:
+isso duplica os pacotes Python em disco dentro da imagem (não duplica
+*download*, já que `uv` usa o cache de wheels normalmente) em troca de
+nunca mais quebrar o ambiente do host — compartilhar não era seguro.
+`UV_PYTHON_PREFERENCE` mudou de `only-managed` pra `only-system` (a imagem
+já tem Python 3.14; o Python gerenciado pelo `uv` ficava em
+`/root/.local/share/uv/python/...`, inacessível pro `appuser` não-root).
+Adicionado também: `ffmpeg` (faltava no apt-get) e `nvidia-cublas-cu12`/
+`nvidia-cudnn-cu12` + `LD_LIBRARY_PATH` pro `ctranslate2`/`faster-whisper`
+rodar com GPU dentro do container (mesmo padrão já usado em
+`minimax-video-factory/docker/Dockerfile` e `Dockerfile.python` — conferido,
+já estava correto lá, nada a replicar). `uv sync --no-install-project
+--no-dev` trocado pra `--frozen` (usa o lock commitado, não re-resolve), e
+`COPY . /app` movido pra depois do `uv sync` (a cópia do repo inteiro antes
+invalidava a camada de cache de deps a cada mudança de qualquer arquivo).
+
+Também achado nesta janela: `.pgdata_empty_devcontainer_bak` (diretório
+root-owned, 0700, resquício de um backup antigo de dados do Postgres)
+bloqueava o `docker build` inteiro com "permission denied" ao ler o
+contexto — resolvido com entrada no `.dockerignore` (não apagado: a
+remoção foi bloqueada pelo classificador de permissões desta sessão; não
+é segredo nem dado real, é lixo de disco).
+
+Validado: `docker compose -f .devcontainer/docker-compose.yml run --rm
+--no-deps python sh -c 'python -c "import fastapi, sqlalchemy, psycopg,
+pydantic, ctranslate2"'` funciona sem precisar de `uv run`; `.venv` do
+host comparado antes/depois do rebuild, idêntico; `uv run pytest -q` no
+host: 169 passed (mesmo baseline). Devcontainer interativo (VS Code) ainda
+não reaberto pelo usuário para confirmação final — pendência.
+
+---
+
+## 2026-10-07 — Mutex de GPU compartilhado com minimax-video-factory
+
+Mesmo achado documentado em detalhe no HANDOFF do minimax-video-factory
+("Mutex de GPU compartilhado com insta_kb") — este é o espelho do lado
+insta_kb, resumido:
+
+- `infra/gpu_lock/gpu_lock.py`: módulo IDÊNTICO (duplicado, não
+  importado) ao `minimax_mcp/gpu_lock.py` do outro repo. `fcntl.flock`
+  sobre `GPU_LOCK_DIR/gpu.lock` (default `~/.gpu-lock`, bind-mounted em
+  `/var/lib/gpu-lock` nos serviços `api`/`worker`/`mcp`).
+- `_default_transcribe` (ig_worker) envolve a chamada ao Whisper com
+  `held(f"ig-worker transcribe {filepath}", timeout=1800)`. Falha soft
+  (`{"ok": false, "error": ...}`) se não conseguir o lock — não derruba
+  o worker nem perde a mensagem (vai pro fluxo normal de retry/DLQ).
+- `GET /gpu/status`, `POST /gpu/acquire`, `POST /gpu/release` na API REST
+  (porta 8084) — mesma forma, implementação independente do lado minimax
+  (que usa `@mcp.custom_route` do FastMCP em vez de FastAPI).
+
+**Validado nesta sessão, ponta a ponta de verdade:** `POST :8848/gpu/acquire`
+(minimax, processo totalmente separado) → `GET :8084/gpu/status` (aqui)
+reportou `held=true` com o holder certo → release → `free=true` de novo.
+Também validado com carga real: `GET /gpu/status` refletiu o lock
+**enquanto o worker transcrevia um post de verdade da fila** (`holder`
+= caminho do arquivo .mp4 sendo processado). 182 testes (+12 novos)
+passed; ruff/pyright/bandit limpos. Commit `a2d391f`. Commit irmão no
+minimax-video-factory: `c92ffee` (review disparado, resultado pendente
+no momento deste HANDOFF).
+
+⚠️ **Limitação aceita, registrada dos dois lados:** sem detector de lock
+órfão — se um processo morrer sem liberar (crash, `kill -9`), o lock
+fica preso até alguém apagar `~/.gpu-lock/gpu.lock`/`gpu.holder` à mão.
+
+---
+
+## 2026-10-07 — Ollama containerizado (host.docker.internal não funcionava)
+
+Achado durante a Task 6 (matriz de testes, Step 5): `OLLAMA_URL=http://
+host.docker.internal:11434` (decisão da Task 4) **não é alcançável a
+partir da rede `insta-kb-net`** — testado de dentro de
+`devcontainer-worker-1`: timeout sempre. Comparando um container solto na
+bridge padrão do Docker (200 OK) contra um na `insta-kb-net` (timeout): o
+firewall do host deixa passar a bridge padrão, bloqueia a customizada. É
+exatamente o que o `.env` antigo descrevia — eu tinha avaliado esse
+comentário como desatualizado cedo demais, confirmando só com um container
+solto na bridge errada.
+
+**Consequência real:** o worker ficou preso em retry de "screen read
+failed" (chamada à Ollama pra descrever frame de vídeo) — um post chegou
+a falhar de verdade (`LLM generation failed: Connection timed out`)
+durante uma janela em que também coincidiu um render no minimax (ver
+detalhe completo do incidente no HANDOFF do minimax-video-factory).
+
+**Fix:** serviço `ollama` novo em `.devcontainer/docker-compose.yml`, na
+própria `insta-kb-net` — container-pra-container nunca cruza o firewall
+do host. Monta **read-only** `/home/ollama_models/.ollama` (133 GB, onde o
+`ollama serve` do host já guarda os modelos) — sem duplicar nem
+re-baixar nada. `OLLAMA_URL` dos 3 serviços trocado pra
+`http://ollama:11434`; `extra_hosts`/`host.docker.internal` removidos.
+Dois servidores Ollama agora coexistem (host + container) — mesma
+disputa de GPU que o mutex (`infra/gpu_lock`) já existe pra resolver, não
+um problema novo.
+
+**Validado 2026-10-07 ~18:02** — exigiu 2 fixes além do compose:
+(1) recriar api/worker/mcp (containers criados antes da troca ainda com
+a env antiga `host.docker.internal`); (2) **pinar `image:
+ollama/ollama:0.32.9`** — o `latest` (0.40+) migra o store pra
+`manifests-v2` e falha com o mount `:ro` (`mkdir ... read-only file
+system` → 404/400 em todo request). Com a mesma versão do host, todos os
+modelos ficam visíveis; worker drenando a fila com ingests reais
+(docs 3720+, 0 falhas).
+
+---
+
+## 2026-10-07 — Task 10 ✅: auditoria SOLID (só avaliação)
+
+Entregável: **`docs/SOLID_AUDIT.md`** (314 linhas) — nenhum código
+alterado (design: `docs/superpowers/specs/2026-10-07-solid-audit-task-design.md`).
+
+Método: radon cc/mi + vulture (0 dead code) + grafo AST (35 módulos,
+**0 ciclos**) + checklist S/O/L/I/D manual. Métricas: 38 funções cc≥6;
+piores `ig_worker._build_image_document` cc=**20**, `vault.write_markdown_copy`
+cc=19, `process_message` cc=18; MI pior `ig_worker.py`=**19**. Nota de
+tooling: `except ValueError, TypeError:` (ig_worker:978, llm/client:671,
+queue:133) é sintaxe **PEP 758 do Python 3.14** — válida aqui, mas quebra
+radon/vulture via `uvx` (Python <3.14); contornado com `uv run --with`.
+
+Achados: **0 crítico**; 5 importantes (SRP: `ig_worker` ~12
+responsabilidades / `knowledge.py` 5 domínios; OCP: dupla
+`if provider == "ollama"/"openai-compatible"` em 2 pontos sem registry;
+ISP: 0 Protocol, contrato `dict[str,Any]` universal, `save_document` com
+16 params; DIP: REST delega 9 endpoints ao mcp_server por re-export
+acidental) + 7 menores; backlog de 12 itens ordenado por severidade ×
+esforço (§5).
+
+**Veredito go/no-go: `ciclo futura`** — nada crítico; itens 1–5 do
+backlog entram no próximo ciclo **antes** de novos tipos de mídia ou
+provedores LLM (`ig_worker` + `knowledge` concentram 53% das funções
+cc≥6).
+
+## 2026-10-07 — backlog SOLID em execução: itens #1 e #2 concluídos
+
+Escopo aprovado: executar o backlog §5 do `docs/SOLID_AUDIT.md` com TDD
+(Red → Green → verificação) — item por item, commit por item.
+
+**#1 — registry de provedores LLM (`1140949`)** · esforço S
+- `PROVIDERS = {"ollama": _ollama_generate, "openai-compatible": ...}` em
+  `infra/llm/client.py` vira a única fonte de verdade; tanto
+  `_generate_raw_with_retries` (generator resolvido **antes** do laço de
+  retry) quanto `chat` resolvem pelo mesmo dicionário. Novo provedor =
+  1 linha, 0 pontos de edição duplicados (antes: 4).
+- +2 testes: escopo do registry; dispatch de provedor novo em ambas as
+  cadeias (force_json=False no chat, True no estruturado, via API pública
+  `generate_structured`).
+
+**#2 — desacoplar api→mcp_server (`c3cfe93`)** · esforço S
+- Novo pacote `src/services/` com `ig_control.py`
+  (`queue_status`/`publish_control_command`/`get_progress`) extraído do
+  `mcp_server.server` — lógica na camada de aplicação.
+- `api/main.py`: 9 endpoints delegam p/ `services.ig_control` +
+  `core.knowledge`; o import de `mcp_server` **sumiu** (teste AST em
+  `test_api_main.py` impede regressão). Ferramentas MCP ig_* viram
+  delegações finas — REST e MCP são irmãos, nunca se importam (F5).
+- Melhora embutida: `connect()` movido para dentro do `try` — falha de
+  broker agora responde `{"ok": false, ...}` em vez de estourar exceção
+  no endpoint/ferramenta.
+- +7 testes (1 AST + 6 do serviço, portados dos testes MCP); suíte de
+  start/stop agora **valida o comando enviado** (antes o fake ignorava).
+
+**Verificação (ambos itens):** pytest 184→**191 passed**; `ruff check`,
+`ruff format`, `pyright` (0 erros), `bandit`, `pip-audit` — todos verdes
+nos pre-commit hooks.
+
+**Próximos:** ver seção abaixo (itens #3–#5 concluídos).
+
+
+## 2026-10-07 — backlog SOLID: itens #3, #4 e #5 concluídos + code review
+
+- **#3 (`9315f33`)** `ig_worker.py` (1031 l.) fatiado em
+  `workers/{text,media_download,screen,consumer}.py` + orquestração no
+  `ig_worker.py`; `__all__`/import público preservado (Nada quebrado em
+  api/mcp/scripts). +6 testes de contrato → **197 passed**.
+- **#4 (`35499a5`)** `knowledge.py` (732 l.) fatiado em
+  `core/knowledge/{ingest,query,export}.py` + fachada `knowledge`
+  (inclui `settings` no `__all__`, regressão que o review pegaria). Teste
+  de `ask` passa a patchar `query.search` (dono real). +5 contrato →
+  **202 passed**.
+- **#5 (`1010bcf` + follow-up `e8fe940`)** `core/contracts.py`:
+  TypedDicts (`ProcessResult`, `DocBuilt`/`DocBuiltErr`,
+  `DocumentDraft`), Protocols (`Embedder`, pipeline de mídia,
+  `Ingester` com keywords explícitas), `save_document` com
+  `DocumentDraft` (16→4 params). `PLR0913` **reabilitado** no pyproject
+  com 6 `# noqa` documentados. Follow-up do review: `OkResult` morto →
+  **`ErrResult` (`ok: Literal[False]`) compartilhado + pares Ok/Err por
+  fronteira** (`SearchOk`, `AskOk`, `ReindexOk`, `QueueStatusOk`,
+  `ControlCommandOk`, `ProgressOk`, `ExportSearchOk`, `ListDocumentsOk`,
+  `ExportDocumentsOk`) propagados até `api/main.py` e
+  `mcp_server/server.py` — TypedDict é fechado, então não existe "Ok
+  genérico com extras"; a validação de resposta nova pegou 3 fixtures de
+  teste com shape incompleto (`query`/`sources`/`total`). Escopo F4
+  restante (registrado): `ingest`/`llm`/scripts ainda `dict[str, Any]`.
+  → **206 passed**; hooks (ruff/pyright/bandit/pip-audit) verdes.
+
+**Code review (2 subagentes, template `code-reviewer.md`):**
+
+- insta_kb `fd99996..1010bcf` → **"With fixes"**. Importante: (i)
+  `OkResult` morto → **corrigido em `e8fe940`**; (ii) este HANDOFF com
+  #3–#5 desatualizado → **corrigido nesta seção**. Nenhum bug de
+  runtime; AST/`__all__`/imports verificados byte a byte.
+- minimax `631bbaf..7fb3c21` → **"Yes, but fast-follow"**. Importante:
+  erros de **transporte** (`httpx`/`TimeoutError`/`OSError`) no poll de
+  `/history`/`/prompt` escapam de `ComfyUITimeout` → `core.py` solta o
+  lock de GPU com payload sem `prompt_id`/`timed_out`. **Resolvido no
+  fast-follow `cc17351`** (guard no `_poll` + fallback HTTP-only +
+  `prompt_id` no payload; TDD, 11 passed). Menores: poll triplo de
+  `/history`, docstring, `COMMANDS.md` stale 240s, reset de teste.
+
+## ✅ 2026-10-07 — fechamento: MCPs testados + docs/diagramas (Tasks 5/6/8/9)
+
+**Testes MCP (retomados do Step 3 da Task 5/6):** insta-kb — 7 tools
+chamadas de verdade (`kb_list_documents`, `kb_export_search`,
+`knowledge_search`, `knowledge_ask`, `ig_queue_status`, `ig_get_progress`,
+`kb_export`), cada uma conferida contra o shape Ok/Err do par em
+`core/contracts.py`; skip documentado: `ig_worker_start/stop` (worker
+ativo na sessão) e `knowledge_reindex` (recalcula 13k embeddings — unit
+test cobre). minimax remote (8848): `health_check`, `queue_status`,
+`list_outputs`; uv stdio: 2 tools. `_uv_health` ok:false **não é bug do
+repo**: `MODELS_DIR` apontava pro caminho antigo do modelo — corrigido em
+`opencode.json`, **restart do OpenCode pendente (ação sua)**.
+
+**Docs/diagramas (Tasks 8/9):** README sweep (testes 136→**206**,
+FastMCP **4.x**, portas **8084** — a API real vive em 8084, `.env:86`,
+8085 era stale —, registro MCP = streamable-http `:8849` como o
+`.mcp.json` manda, seção Claude Code reescrita, `av 18.1.0` na tabela);
+`.env-example` limpo de resquícios do minimax (`mcp_http_runner.sh`,
+`src/minimax_mcp/server.py` não existem aqui); site MkDocs novo
+(`mkdocs.yml` + `docs/index.md` + `docs/ARQUITETURA.md` com 3 Mermaid)
+com **GitHub Pages via workflow** (`docs.yml`: `uv sync --only-group
+docs`, `mkdocs build --strict`, assert de que só HTML/CSS/JS sobe);
+`check-yaml` isenta `mkdocs.yml` (tags `!!python/name`). No minimax:
+`docs/ARQUITETURA.md` + `MCP_TOOLS.md` regenerado + sweep v0.39.1.
+
+**Suíte final antes do PR:** `206 passed` + `ruff` 0 + `pyright` 0
+(re-rodar no passo de commits/PR).
+
+**Pendências restantes (nenhuma bloqueante):**
+1. **Reiniciar o OpenCode** (ação sua) — `MODELS_DIR` novo vale a partir
+   do restart; instâncias MCP recarregam junto.
+2. Fila do insta_kb drenando sozinha (snapshot: 193 ready, 0 dead,
+   1 consumer) — pausar/retomar com `ig_worker_start`/`ig_worker_stop`.
+3. **Último passo do plano (pedido seu): testes reais de criação de
+   vídeo**, após os commits/PR desta branch.
+4. graphify (Task 9 Step 4, opcional) — não solicitado; Mermaid cobre.
+
+---
+
+## 2026-10-07 (fim de sessão) — review do refactor SOLID + fechamento
+
+Review de código dos 9 commits do refactor SOLID (fatiar `ig_worker.py`/
+`knowledge.py`, contratos tipados, decoupling api↔mcp, registry LLM):
+**aprovado**. Os dois splits grandes foram confirmados como moves puros
+(comparação de AST função por função — zero lógica perdida, duplicada ou
+alterada), o mutex de GPU (`infra/gpu_lock/`) saiu intocado, e o worker em
+produção já estava rodando o código novo havia ~2,5h sem erro nenhum
+enquanto drenava a fila real.
+
+Fixes aplicados a partir das ressalvas do review (commit `419059a`):
+- `core/contracts.py`: `ErrResult` ganha `stage: NotRequired[str]` — sem
+  isso, o dia em que algum endpoint devolver um erro com esse campo
+  (`core/knowledge/ingest.py` já produz esse shape), o FastAPI filtra a
+  chave da resposta sem avisar ninguém.
+- `mcp_server/server.py`: `MCP_TRANSPORT=http` (aceito como alias) não
+  setava o path `/mcp` — só `streamable-http` setava. `.mcp.json`
+  apontando pra `.../mcp` daria 404 nesse transporte específico.
+- `.github/workflows/docs.yml`: o step de build usava `uv run mkdocs
+  build` sem `--only-group docs`, anulando o isolamento do step anterior
+  (nunca rodou de verdade — só dispara em push pra main).
+- Contagem de endpoints corrigida (10→13) em README/ARQUITETURA.
+
+Ambiente: `uv sync` precisa de `--extra dev` agora pra trazer
+pytest/ruff/pyright/mkdocs de volta (o grupo `dev` virou optional-dependency,
+não dependency-group default) — achado ao tentar rodar a suíte do
+minimax-video-factory nesta mesma sessão, registrado aqui porque o
+padrão pode se repetir.
+
+**Pendência real, única:** reiniciar a sessão do OpenCode (ação sua) pra
+`insta-kb` (agora HTTP, `:8849/mcp`) e a instância host do minimax
+reconectarem — sem isso, o mutex de GPU não protege chamadas feitas por
+essa sessão específica (já causou um incidente real documentado no
+HANDOFF do minimax-video-factory: render + transcrição simultâneos, um
+post falhou por timeout no Ollama).

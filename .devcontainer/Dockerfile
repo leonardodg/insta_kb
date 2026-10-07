@@ -1,33 +1,74 @@
 FROM python:3.14-slim-bookworm AS development
 
+# only-system (not only-managed): the base image already ships Python 3.14,
+# so there's no need for uv to install its own managed copy under /root --
+# that copy was unreadable to appuser after the USER switch below, which
+# silently broke `python`/`uv run` for the non-root user (found 2026-10-07).
 ENV PYTHONUNBUFFERED=1 \
   UV_COMPILE_BYTECODE=1 \
   UV_LINK_MODE=copy \
-  UV_PYTHON_PREFERENCE=only-managed
+  UV_PYTHON_PREFERENCE=only-system
 
-# Expose the venv to non-root user and make it the default python environment
-ENV VIRTUAL_ENV=/app/.venv
+# venv lives entirely INSIDE the image, never on the host-bind-mounted /app.
+# It used to be /app/.venv (a symlink into the host's ~/.cache/uv), which
+# broke two independent ways (found 2026-10-07, see docs/HANDOFF.md):
+#   1. `uv run` inside the container "fixed" the then-dangling symlink by
+#      repointing it at a container-only cache path, silently breaking the
+#      host's own venv on the next host-side `uv` command.
+#   2. Even with the symlink target made reachable (tried: bind-mounting the
+#      host's ~/.cache/uv at an identical path), the venv's pyvenv.cfg pins
+#      an absolute interpreter path from the HOST's system Python -- it
+#      never resolves inside any container, and the venv also carries
+#      compiled extensions (psycopg, av/PyAV, ctranslate2, pydantic-core...)
+#      built against the host's libs, not portable to a different base image
+#      regardless. A venv genuinely shared between host and container isn't
+#      safe to build this way -- isolate it instead.
+ENV VIRTUAL_ENV=/opt/venv
+ENV UV_PROJECT_ENVIRONMENT=/opt/venv
 # Ensure system directories are present on PATH so core utilities (sleep, sh, etc.) are available.
 ENV PATH="${VIRTUAL_ENV}/bin:${PATH}"
+# `--no-install-project` at build time means the project itself was never
+# pip-installed into /opt/venv (deps only) -- this is what lets api/worker/mcp
+# below invoke the venv's python/uvicorn directly (no `uv run`, which would
+# otherwise re-sync -- including dev deps like ruff/pyright -- on every
+# container start, ~60s wasted and dev tooling installed into a runtime
+# image). Same PYTHONPATH pattern minimax-video-factory's Dockerfile.python
+# already uses for the same reason.
+ENV PYTHONPATH=/app/src
 
 # Install OS packages we need for building and runtime
+# ffmpeg: faster-whisper/av need it to decode whatever container format
+# ig_worker downloads (Instagram videos aren't always a plain WAV/MP4 PCM).
 RUN apt-get update && apt-get install --no-install-recommends -y \
     build-essential \
     curl \
     git \
     ca-certificates \
+    ffmpeg \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 
 WORKDIR /app
 
 RUN pip install uv
-COPY pyproject.toml uv.lock* ./
+# Only pyproject.toml + uv.lock for this layer: --no-install-project already
+# skips installing the project itself, so uv sync needs no source files --
+# copying the whole repo here (`COPY . /app`, now moved below) invalidated
+# this cache layer on every file change, rebuilding the venv even for
+# doc-only edits (review finding, 2026-10-07).
+COPY pyproject.toml uv.lock ./
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --no-install-project --no-dev
 
 COPY . /app
-RUN --mount=type=cache,target=/root/.cache/uv \
-    uv lock && \
-    uv sync --no-install-project --no-dev
+
+# ctranslate2 (inside faster-whisper) links libcublas.so.12 and libcudnn at
+# runtime -- the base image has no CUDA toolkit, and nvidia-container-toolkit
+# only passes through the driver (libcuda.so), not these runtime libs. Same
+# fix already applied in minimax-video-factory's docker/Dockerfile.python.
+RUN uv pip install --python /opt/venv/bin/python --no-cache-dir \
+      nvidia-cublas-cu12 nvidia-cudnn-cu12
+ENV LD_LIBRARY_PATH="/opt/venv/lib/python3.14/site-packages/nvidia/cublas/lib:/opt/venv/lib/python3.14/site-packages/nvidia/cudnn/lib:${LD_LIBRARY_PATH}"
 
 # Create non-root user and ensure ownership of persistent folders. Also make the venv accessible.
 RUN useradd --create-home --shell /bin/bash appuser \

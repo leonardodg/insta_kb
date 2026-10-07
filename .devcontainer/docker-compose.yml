@@ -1,25 +1,34 @@
+networks:
+  insta-kb-net:
+    name: insta-kb-net
+
 services:
   python:
     build:
       context: ../
       dockerfile: ./.devcontainer/Dockerfile
+    networks: [insta-kb-net]
     volumes:
+      # Only source code is bind-mounted -- the venv lives entirely inside
+      # the image (see Dockerfile). A venv bind-mounted from the host used
+      # to live at /app/.venv; that broke two ways (2026-10-07, see
+      # docs/HANDOFF.md): compiled host binaries (psycopg, av, ctranslate2,
+      # pydantic-core...) don't run against a different base image, and the
+      # venv's embedded interpreter path only resolves on the host anyway.
       - ../:/app
-    ports:
-      # 127.0.0.1 on purpose, same as postgres/rabbitmq below: the REST API
-      # has no authentication (see docs/HANDOFF.md security review) --
-      # exposing it on all interfaces would put kb_export's write and
-      # ig_worker_start/stop's control actions reachable from the network.
-      - "127.0.0.1:${API_PORT:-8084}:8000"
-      - "127.0.0.1:${MCP_PORT:-8849}:8000"
     user: appuser
     env_file:
       - ../.env
     command: sleep infinity
+    # Debug shell only now -- api/worker/mcp below are the real services.
+    # No ports here: the python service never listened usefully on them
+    # anyway (both host ports forwarded to the same internal :8000, before
+    # any of the three real services existed to answer on it).
 
   postgres:
     image: pgvector/pgvector:pg16
     restart: unless-stopped
+    networks: [insta-kb-net]
     env_file:
       - ../.env
     environment:
@@ -34,6 +43,7 @@ services:
   rabbitmq:
     image: rabbitmq:3-management
     restart: unless-stopped
+    networks: [insta-kb-net]
     # Nome de nó fixo: sem isso, cada container novo ganha hostname aleatório
     # (o id curto do container) e o RabbitMQ cria um node Mnesia NOVO e VAZIO
     # a cada recreate -- os dados ficam presos no node antigo, intactos mas
@@ -50,3 +60,115 @@ services:
       - "127.0.0.1:${RABBITMQ_MANAGEMENT_PORT:-15673}:15672"
     volumes:
       - ${RABBITMQ_DATA_DIR:-../.rabbitmq}:/var/lib/rabbitmq
+
+  # Ollama, containerized -- NOT host.docker.internal. First tried pointing
+  # at the host's `ollama serve` process via host.docker.internal:11434;
+  # worked from a one-off container on Docker's default bridge network, but
+  # NOT from this compose's custom `insta-kb-net` bridge -- the host
+  # firewall allows the default bridge subnet through to the host but
+  # blocks insta-kb-net's (confirmed 2026-10-07 by comparing both networks
+  # side by side: default bridge -> 200 OK, insta-kb-net -> timeout every
+  # time). That's what the old .env comment ("containers can't reach
+  # Ollama, worker must run on host") was actually describing -- real, just
+  # scoped to custom networks, not every container. Containerizing Ollama
+  # on insta-kb-net sidesteps the firewall path entirely: container-to-
+  # container traffic on a user-defined network never crosses it.
+  # Read-only bind of the HOST Ollama's existing model store (133 GB,
+  # /home/ollama_models/.ollama) -- no re-download, no duplication; this
+  # container serves the exact same files the host's `ollama serve`
+  # process does. The host process keeps running (coexistence decision,
+  # see docs/HANDOFF.md) -- two Ollama *servers* sharing the GPU is the
+  # same contention the shared GPU mutex (src/infra/gpu_lock) exists for;
+  # not solved by this container, a separate concern from the networking
+  # fix here.
+  ollama:
+    # Pinado na versão do host (0.32.9): o latest (0.40+) migra o store
+    # pra manifests-v2 e FALHA com o mount :ro abaixo (mkdir read-only).
+    image: ollama/ollama:0.32.9
+    restart: unless-stopped
+    networks: [insta-kb-net]
+    environment:
+      OLLAMA_MAX_LOADED_MODELS: "1"
+    volumes:
+      - /home/ollama_models/.ollama:/root/.ollama:ro
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  api:
+    build:
+      context: ../
+      dockerfile: ./.devcontainer/Dockerfile
+    networks: [insta-kb-net]
+    env_file:
+      - ../.env
+    environment:
+      OLLAMA_URL: http://ollama:11434
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-kb}:${POSTGRES_PASSWORD:-kb}@postgres:5432/${POSTGRES_DB:-knowledge}
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:-guest}:${RABBITMQ_PASS:-guest}@rabbitmq:5672/
+      GPU_LOCK_DIR: /var/lib/gpu-lock
+    command: /opt/venv/bin/uvicorn api.main:app --host 0.0.0.0 --port 8000
+    ports:
+      # No auth on the REST API (see docs/HANDOFF.md security review) --
+      # 127.0.0.1 only, same reasoning as postgres/rabbitmq above.
+      - "127.0.0.1:${API_PORT:-8084}:8000"
+    depends_on: [postgres, rabbitmq, ollama]
+    volumes:
+      - ../:/app
+      # Shared with minimax-video-factory's MCP server (same host path,
+      # neither repo imports the other -- see src/infra/gpu_lock/gpu_lock.py).
+      - ${HOME}/.gpu-lock:/var/lib/gpu-lock
+    user: appuser
+
+  worker:
+    build:
+      context: ../
+      dockerfile: ./.devcontainer/Dockerfile
+    networks: [insta-kb-net]
+    env_file:
+      - ../.env
+    environment:
+      OLLAMA_URL: http://ollama:11434
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-kb}:${POSTGRES_PASSWORD:-kb}@postgres:5432/${POSTGRES_DB:-knowledge}
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:-guest}:${RABBITMQ_PASS:-guest}@rabbitmq:5672/
+      GPU_LOCK_DIR: /var/lib/gpu-lock
+    command: /opt/venv/bin/python -m workers.ig_worker
+    depends_on: [postgres, rabbitmq, ollama]
+    volumes:
+      - ../:/app
+      - ${HOME}/.gpu-lock:/var/lib/gpu-lock
+    user: appuser
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  mcp:
+    build:
+      context: ../
+      dockerfile: ./.devcontainer/Dockerfile
+    networks: [insta-kb-net]
+    env_file:
+      - ../.env
+    environment:
+      OLLAMA_URL: http://ollama:11434
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-kb}:${POSTGRES_PASSWORD:-kb}@postgres:5432/${POSTGRES_DB:-knowledge}
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:-guest}:${RABBITMQ_PASS:-guest}@rabbitmq:5672/
+      MCP_TRANSPORT: streamable-http
+      MCP_PORT: "8849"
+      GPU_LOCK_DIR: /var/lib/gpu-lock
+    command: /opt/venv/bin/python -m mcp_server.server
+    ports:
+      - "127.0.0.1:${MCP_PORT:-8849}:8849"
+    depends_on: [postgres, rabbitmq, ollama]
+    volumes:
+      - ../:/app
+      - ${HOME}/.gpu-lock:/var/lib/gpu-lock
+    user: appuser
