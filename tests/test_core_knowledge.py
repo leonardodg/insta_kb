@@ -81,17 +81,17 @@ def test_ingest_text_happy_path(monkeypatch: pytest.MonkeyPatch):
 
     saved_kwargs: dict[str, Any] = {}
 
-    def fake_save_document(sess: Any, **kwargs: Any) -> FakeDoc:
-        saved_kwargs.update(kwargs)
+    def fake_save_document(sess: Any, draft: Any, **kwargs: Any) -> FakeDoc:
+        saved_kwargs.update(draft)
         return FakeDoc(
-            title=kwargs["title"],
-            summary=kwargs["summary"],
-            tutorial=kwargs["tutorial"],
-            tags=kwargs["tags"],
-            source_url=kwargs["source_url"],
-            platform=kwargs["platform"],
-            type=kwargs["type"],
-            transcription_text=kwargs["transcription_text"],
+            title=draft["title"],
+            summary=draft["summary"],
+            tutorial=draft["tutorial"],
+            tags=draft["tags"],
+            source_url=draft["source_url"],
+            platform=draft["platform"],
+            type=draft["type"],
+            transcription_text=draft["transcription_text"],
         )
 
     monkeypatch.setattr(knowledge.db, "save_document", fake_save_document)

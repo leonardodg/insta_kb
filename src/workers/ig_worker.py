@@ -40,10 +40,20 @@ from __future__ import annotations
 import json
 import logging
 import time
-from collections.abc import Callable
+from collections.abc import Mapping
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
+from core.contracts import (
+    Describer,
+    DocBuilt,
+    DocBuiltErr,
+    Downloader,
+    Ingester,
+    ProcessResult,
+    ScreenReader,
+    Transcriber,
+)
 from core.knowledge import knowledge
 from core.settings.config import settings
 from infra import db
@@ -121,9 +131,9 @@ def _build_video_document(
     dl: dict[str, Any],
     filepaths: list[str],
     *,
-    transcribe: Callable[[str], dict[str, Any]] | None,
-    read_screen: Callable[[str], dict[str, Any]] | None,
-) -> dict[str, Any]:
+    transcribe: Transcriber | None,
+    read_screen: ScreenReader | None,
+) -> DocBuilt | DocBuiltErr:
     """Transcribe+read the first video file and assemble the ingest text.
 
     Split out of `process_message` (which was tripping PLR0911/PLR0912/
@@ -209,8 +219,8 @@ def _build_video_document(
 def _describe_one_image(
     fp: str,
     *,
-    describe: Callable[[str], dict[str, Any]],
-    read_screen: Callable[[str], dict[str, Any]] | None,
+    describe: Describer,
+    read_screen: ScreenReader | None,
 ) -> dict[str, Any]:
     """Describe+read_screen for a single carousel image. Split out of
     `_build_image_document` to keep its branch count under control
@@ -242,9 +252,9 @@ def _build_image_document(
     dl: dict[str, Any],
     filepaths: list[str],
     *,
-    describe: Callable[[str], dict[str, Any]] | None,
-    read_screen: Callable[[str], dict[str, Any]] | None,
-) -> dict[str, Any]:
+    describe: Describer | None,
+    read_screen: ScreenReader | None,
+) -> DocBuilt | DocBuiltErr:
     """Describe each image file (carousels included) and assemble the
     ingest text. Same split rationale as `_build_video_document`.
 
@@ -317,16 +327,16 @@ def _build_image_document(
     }
 
 
-def process_message(
+def process_message(  # noqa: PLR0913 -- 5 callables de IO ja sao Protocol (F4b)
     message: dict[str, Any],
     *,
-    download: Callable[[dict[str, Any]], dict[str, Any]],
-    transcribe: Callable[[str], dict[str, Any]] | None,
-    describe: Callable[[str], dict[str, Any]] | None,
-    read_screen: Callable[[str], dict[str, Any]] | None = None,
-    ingest: Callable[..., dict[str, Any]],
+    download: Downloader,
+    transcribe: Transcriber | None,
+    describe: Describer | None,
+    read_screen: ScreenReader | None = None,
+    ingest: Ingester,
     categories: list[str] | None = None,
-) -> dict[str, Any]:
+) -> ProcessResult:
     """Download -> transcribe/describe -> ingest. Pure; all IO injected.
 
     Videos transcribe the first downloaded file. Images/carousels describe
@@ -352,8 +362,13 @@ def process_message(
         built = _build_image_document(
             message, dl, filepaths, describe=describe, read_screen=read_screen
         )
-    if not built["ok"]:
-        return {"status": "error", **{k: v for k, v in built.items() if k != "ok"}}
+    if built["ok"] is False:
+        # Comprehension filtra `ok` dinamicamente; pyright nao fecha o
+        # TypedDict a partir dele -- o cast documenta essa fronteira.
+        return cast(
+            ProcessResult,
+            {"status": "error", **{k: v for k, v in built.items() if k != "ok"}},
+        )
 
     text, lang, doc_type, categoria = (
         built["text"],
@@ -405,7 +420,7 @@ def process_message(
 _categories_cache: list[str] | None = None
 
 
-def _discard_media(res: dict[str, Any]) -> None:
+def _discard_media(res: Mapping[str, Any]) -> None:
     """Apaga a mídia baixada, tenha a ingestão dado certo ou não.
 
     Só roda quando `IG_DELETE_AFTER_INGEST` é ligado explicitamente.
@@ -511,7 +526,7 @@ def _on_work(ch: Any, method: Any, properties: Any, body: bytes) -> None:
 
     if res["status"] == "done":
         logger.info(
-            "ingested ig_pk=%s document_id=%s", message["ig_pk"], res["document_id"]
+            "ingested ig_pk=%s document_id=%s", message["ig_pk"], res.get("document_id")
         )
         record_progress(message, res)
     else:
@@ -519,7 +534,7 @@ def _on_work(ch: Any, method: Any, properties: Any, body: bytes) -> None:
         logger.warning(
             "processing failed ig_pk=%s: %s%s",
             message["ig_pk"],
-            res["error"],
+            res.get("error"),
             " (permanente)" if permanente else "",
         )
         requeue_or_dead_letter(ch, properties, body, permanente=permanente)

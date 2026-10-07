@@ -15,6 +15,7 @@ from __future__ import annotations
 import json
 import logging
 import time
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
@@ -101,7 +102,7 @@ def pace_after(started: float, pk: str | None) -> None:
         time.sleep(pausa)
 
 
-def record_progress(message: dict[str, Any], res: dict[str, Any]) -> None:
+def record_progress(message: dict[str, Any], res: Mapping[str, Any]) -> None:
     """Append a `{"status": "done", ...}` entry to IG_STATE_FILE, capped at
     `_MAX_PROGRESS_ENTRIES`. Best-effort: a failure here must not re-queue
     or re-process a post that already ingested fine.

@@ -13,7 +13,6 @@ Settings, `core/settings/config.py`) instead -- a mechanical swap, same value.
 from __future__ import annotations
 
 import re
-from collections.abc import Callable
 from typing import Any
 
 from sqlalchemy import cast, create_engine, delete, func, select
@@ -21,6 +20,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
+from core.contracts import DocumentDraft, Embedder
 from core.settings.config import settings
 from infra.db.models import Chunk, Document, Embedding
 
@@ -91,46 +91,30 @@ def chunk_text(text: str, max_chars: int = 700, overlap: int = 100) -> list[str]
 
 def save_document(
     session: Session,
+    draft: DocumentDraft,
     *,
-    type: str,
-    source_url: str | None,
-    platform: str | None,
-    title: str | None,
-    language: str | None,
-    transcription_text: str | None,
-    summary: str | None,
-    tutorial: str | None,
-    objectives: str | None,
-    tags: list[str] | None,
-    raw_file_path: str | None,
-    llm_provider: str | None,
-    llm_model: str | None,
-    embed_fn: Callable[[str], list[float]],
+    embed_fn: Embedder,
     embedding_model: str,
-    ig_pk: str | None = None,
 ) -> Document:
-    """Insert a Document + its chunks + their embeddings in one transaction."""
-    doc = Document(
-        type=type,
-        source_url=source_url,
-        platform=platform,
-        title=title,
-        language=language,
-        transcription_text=transcription_text,
-        summary=summary,
-        tutorial=tutorial,
-        objectives=objectives,
-        tags=tags,
-        raw_file_path=raw_file_path,
-        llm_provider=llm_provider,
-        llm_model=llm_model,
-        ig_pk=ig_pk,
-    )
+    """Insert a Document + its chunks + their embeddings in one transaction.
+
+    The columns travel as a `DocumentDraft` TypedDict (audit F4c): the old
+    16 per-column parameters collapse to 4, and pyright now checks the
+    draft literal against the schema at every call site.
+    """
+    doc = Document(**draft)
     session.add(doc)
     session.flush()  # assigns doc.id
 
     text_for_chunks = "\n\n".join(
-        filter(None, [summary, tutorial, strip_timestamps(transcription_text)])
+        filter(
+            None,
+            [
+                draft["summary"],
+                draft["tutorial"],
+                strip_timestamps(draft["transcription_text"]),
+            ],
+        )
     )
     for idx, piece in enumerate(chunk_text(text_for_chunks)):
         chunk = Chunk(document_id=doc.id, chunk_text=piece, chunk_index=idx)
@@ -183,7 +167,7 @@ def _fuse_rankings(
 def search_documents(
     session: Session,
     query: str,
-    embed_fn: Callable[[str], list[float]],
+    embed_fn: Embedder,
     top_k: int = 5,
 ) -> list[dict[str, Any]]:
     """Combine Postgres full-text search with pgvector cosine similarity."""
@@ -239,9 +223,7 @@ def search_documents(
     return ranked
 
 
-def reindex_all(
-    session: Session, embed_fn: Callable[[str], list[float]], embedding_model: str
-) -> int:
+def reindex_all(session: Session, embed_fn: Embedder, embedding_model: str) -> int:
     """Recompute chunks + embeddings for every document (e.g. after changing
     EMBEDDING_MODEL)."""
     docs = session.execute(select(Document)).scalars().all()
@@ -346,7 +328,7 @@ def count_documents(
     return session.execute(stmt).scalar_one()
 
 
-def list_documents(
+def list_documents(  # noqa: PLR0913 -- filtros do catalogo sao todos opcionais
     session: Session,
     *,
     limit: int = 20,

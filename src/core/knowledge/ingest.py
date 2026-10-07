@@ -19,6 +19,7 @@ from typing import Any, cast
 
 import yaml
 
+from core.contracts import DocumentDraft
 from core.settings.config import settings
 from infra import db, vault
 from infra.llm import client as llm
@@ -67,7 +68,7 @@ def _extract_section(body: str, heading: str = "Summary") -> str | None:
     return text or None
 
 
-def ingest_text(
+def ingest_text(  # noqa: PLR0913 -- API publica kwargs do pipeline de ingestao
     text: str,
     *,
     source_url: str | None = None,
@@ -109,24 +110,28 @@ def ingest_text(
 
     session = db.get_session()
     try:
+        draft: DocumentDraft = {
+            "type": doc_type,
+            "source_url": source_url,
+            "platform": platform,
+            "title": title
+            or (gen["resumo"][:80] if gen.get("resumo") else "sem título"),
+            "language": language,
+            "transcription_text": text,
+            "summary": gen.get("resumo"),
+            "tutorial": gen.get("tutorial"),
+            "objectives": "\n".join(gen.get("objetivos") or []),
+            "tags": tags,
+            "raw_file_path": raw_file_path,
+            "llm_provider": gen.get("provider"),
+            "llm_model": gen.get("model"),
+            "ig_pk": ig_pk,
+        }
         doc = db.save_document(
             session,
-            type=doc_type,
-            source_url=source_url,
-            platform=platform,
-            title=title or (gen["resumo"][:80] if gen.get("resumo") else "sem título"),
-            language=language,
-            transcription_text=text,
-            summary=gen.get("resumo"),
-            tutorial=gen.get("tutorial"),
-            objectives="\n".join(gen.get("objetivos") or []),
-            tags=tags,
-            raw_file_path=raw_file_path,
-            llm_provider=gen.get("provider"),
-            llm_model=gen.get("model"),
+            draft,
             embed_fn=llm.embed,
             embedding_model=llm.EMBEDDING_MODEL,
-            ig_pk=ig_pk,
         )
         doc_dict = {
             "id": doc.id,
@@ -250,7 +255,7 @@ def ingest_audio(
     return result
 
 
-def ingest_markdown(
+def ingest_markdown(  # noqa: PLR0913 -- mesma familia kwargs de ingest_text
     path: str | Path,
     *,
     recursive: bool = False,
@@ -383,7 +388,7 @@ def _ingest_markdown_file(
     )
 
 
-def _save_document_with(
+def _save_document_with(  # noqa: PLR0913 -- API interna kwargs do pipeline markdown
     f: Path,
     *,
     doc_type: str,
@@ -401,21 +406,24 @@ def _save_document_with(
 ) -> dict[str, Any]:
     session = db.get_session()
     try:
+        draft: DocumentDraft = {
+            "type": doc_type,
+            "source_url": source_url,
+            "platform": platform,
+            "title": title,
+            "language": language,
+            "transcription_text": text,
+            "summary": summary,
+            "tutorial": tutorial,
+            "objectives": objectives,
+            "tags": tags,
+            "raw_file_path": str(f),
+            "llm_provider": llm_provider,
+            "llm_model": llm_model,
+        }
         doc = db.save_document(
             session,
-            type=doc_type,
-            source_url=source_url,
-            platform=platform,
-            title=title,
-            language=language,
-            transcription_text=text,
-            summary=summary,
-            tutorial=tutorial,
-            objectives=objectives,
-            tags=tags,
-            raw_file_path=str(f),
-            llm_provider=llm_provider,
-            llm_model=llm_model,
+            draft,
             embed_fn=llm.embed,
             embedding_model=llm.EMBEDDING_MODEL,
         )

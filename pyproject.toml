@@ -87,9 +87,8 @@ exclude = [
 [tool.ruff.lint]
 # Melhores práticas: Ativa regras padrões, Flake8, Isort (organização de imports) e Pylint
 select = ["E", "F", "I", "W", "PL"]
-ignore = [
-    "PLR0913", # Permite mais de 5 argumentos em funções (comum em FastAPI)
-]
+# PLR0913 (max 5 args) REABILITADO apos o audit F4c: so as APIs
+# kwargs-heavy escapa, cada uma com `# noqa: PLR0913` documentado.
 
 [tool.ruff.lint.isort]
 # Garante que os imports do seu app fiquem separados de bibliotecas externas
