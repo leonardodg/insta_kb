@@ -134,7 +134,7 @@ mesmos bind mounts.
 | 7 | Fila do insta_kb | ✅ (parada proposital) | drenagem parcial 329→322 ready, 0 dead, 7 ingests e2e (docs 3713→3719), 0 errors; parada graciosa por decisão do usuário (retomável); commit `473e773` (insta_kb) |
 | 8 | Documentação | ⏳ | |
 | 9 | Diagramas | ⏳ | |
-| 10 | Auditoria SOLID (avaliação) | ⏳ | |
+| 10 | Auditoria SOLID (avaliação) | ✅ | relatórios `docs/SOLID_AUDIT.md` ×2 (314 l. insta_kb / 231 l. minimax, só avaliação); veredito **ciclo futura** nos 2; 1 bug-crítico `state=rendering` (minimax) + backlog 12 itens (insta_kb); commits `02f760a`+`76c60a6` |
 
 ---
 
