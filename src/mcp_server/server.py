@@ -341,7 +341,10 @@ def main() -> None:
                 "host": settings.MCP_HOST,
                 "port": settings.MCP_PORT,
             }
-            if transport == "streamable-http":
+            # "http" is accepted above as an alias but FastMCP's actual
+            # transport name is "streamable-http" -- both need /mcp, or
+            # .mcp.json's http://.../mcp 404s (review finding, 2026-10-07).
+            if transport in ("streamable-http", "http"):
                 kwargs["path"] = "/mcp"
             mcp.run(transport=transport, **kwargs)
     else:

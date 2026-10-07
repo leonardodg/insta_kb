@@ -45,8 +45,14 @@ jobs:
 
       # --strict turns a broken internal link into a failed build. A dead link
       # should stop the deploy, not ship.
+      #
+      # `--only-group docs` above (review finding, 2026-10-07): bare `uv run`
+      # re-syncs the DEFAULT environment first, which installs the project
+      # and its full runtime deps (fastmcp et al.) -- undoing the isolation
+      # the previous step exists for. `--only-group docs` here too keeps
+      # mkdocs build from triggering that resync.
       - name: Build (strict)
-        run: uv run mkdocs build --strict
+        run: uv run --only-group docs mkdocs build --strict
 
       - name: Assert the artifact carries no source files
         run: |

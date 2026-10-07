@@ -24,6 +24,12 @@ class ErrResult(TypedDict):
 
     ok: Literal[False]
     error: str
+    # Alguns produtores de erro (ex: core/knowledge/ingest.py) carregam um
+    # terceiro campo `stage` -- FastAPI filtra chaves não declaradas no
+    # response_model, então sem isso `stage` desaparece da resposta HTTP
+    # sem erro nenhum assim que algum endpoint anotado como ErrResult puder
+    # devolver esse shape (review da Task SOLID, 2026-10-07).
+    stage: NotRequired[str]
 
 
 class SearchOk(TypedDict):

@@ -10,7 +10,7 @@ Três leituras do mesmo sistema: o que existe (estrutura), com que é feito
 graph TD
   subgraph interfaces[Interfaces — mesma função por baixo]
     mcp["mcp_server/server.py — 15 tools · streamable-http :8849"]
-    api["api/main.py — 10 endpoints FastAPI · :8084"]
+    api["api/main.py — 13 endpoints FastAPI · :8084"]
   end
 
   subgraph services[src/services]

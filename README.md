@@ -103,7 +103,7 @@ The difference here is infrastructure, not just surface area:
 | Technology | Role |
 |---|---|
 | **FastMCP 4.x** | MCP server — 15 tools, streamable-http (`:8849`) |
-| **FastAPI** | REST API — 10 endpoints, automatic Swagger UI + ReDoc |
+| **FastAPI** | REST API — 13 endpoints, automatic Swagger UI + ReDoc |
 | **pydantic-settings** | Typed, validated configuration from a single `.env` |
 
 ### Quality
@@ -231,7 +231,7 @@ still works: `MCP_TRANSPORT=stdio uv run python src/mcp_server/server.py`.
 
 ## 🌐 REST API
 
-10 endpoints, `src/api/main.py`, every one a thin wrapper around the same
+13 endpoints, `src/api/main.py`, every one a thin wrapper around the same
 function its MCP-tool counterpart calls. Full interactive docs at `/docs`
 (Swagger) and `/redoc` once the server is running.
 
@@ -325,7 +325,7 @@ insta_kb/
 │   │   └── vault/                 # Obsidian .md export
 │   ├── workers/                   # the daemon: consumer → ig_worker → media/text/screen handlers
 │   ├── mcp_server/server.py       # 15 @mcp.tool() definitions
-│   └── api/main.py                # FastAPI app, 10 endpoints
+│   └── api/main.py                # FastAPI app, 13 endpoints
 ├── scripts/
 │   ├── ig_pendentes.py            # which documents still need reprocessing
 │   ├── ig_reprocessar.py          # re-run the pipeline on existing media, --aplicar to write
