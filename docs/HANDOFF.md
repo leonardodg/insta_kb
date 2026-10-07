@@ -29,6 +29,7 @@ versionadas em `docs/PLANO_ATUALIZACAO.md` (este repo) e no minimax-video-factor
 | 7 | Fila do insta_kb (329 msgs) | ✅ (parada proposital) | drenagem parcial 12:56–13:05: 329→**322** ready, 0 dead, **7 ingests** (docs 3713→3719), 0 errors; ver seção abaixo |
 | 8 | Documentação | ⏳ | |
 | 9 | Diagramas | ⏳ | |
+| 10 | Auditoria SOLID (avaliação) | ⏳ | design: `docs/superpowers/specs/2026-10-07-solid-audit-task-design.md` |
 
 Regra de GPU durante toda a execução: 1 job (render/transcrição/Ollama) por
 vez; `av==18.1.0` fixo nos 2 repos; nenhum download de peso sem OK.

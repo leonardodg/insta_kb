@@ -1,4 +1,4 @@
-# Design — Task 5 (nova): Auditoria SOLID dos dois projetos
+# Design — Task 10 (nova): Auditoria SOLID dos dois projetos
 
 - **Data:** 2026-10-07
 - **Status:** aprovado pelo usuário (brainstorming → design → ok)
@@ -12,9 +12,9 @@
 | Pergunta | Decisão |
 |---|---|
 | Escopo | **Só avaliar** — relatório go/no-go + backlog. Nenhum código muda. |
-| Posição | **Nova Task 5** antes da antiga Task 5; renumeração 5–9 → 6–10. |
+| Posição | **Task 10, no fim** (após Task 9) — decisão final do usuário; **sem renumeração** das Tasks 5–9 (a hipótese inicial de virar nova Task 5 foi descartada). |
 | Profundidade | **Profunda**: checklist SOLID por princípio + ferramentas de métricas + análise de acoplamento. |
-| Entregável | `docs/SOLID_AUDIT.md` em cada repo (estrutura idêntica) + seção resumo/ponteiro no HANDOFF de cada + linha 5 da tabela. |
+| Entregável | `docs/SOLID_AUDIT.md` em cada repo (estrutura idêntica) + seção    resumo/ponteiro no HANDOFF de cada + linha 10 da tabela. |
 
 ## Método (5 steps da nova Task 5)
 
@@ -40,19 +40,16 @@
    princípio-a-princípio); backlog final **severidade × esforço**;
    veredito **go/no-go por repo**.
 5. **Entregável** — `docs/SOLID_AUDIT.md` ×2 (estrutura idêntica), seção
-   resumo no HANDOFF de cada repo, linha 5 da tabela de status.
+   resumo no HANDOFF de cada repo, linha 10 da tabela de status.
 
-## Impacto da renumeração (5–9 → 6–10)
+## Impacto da posição (Task 10, sem renumeração)
 
 - Plano mestre + 3 cópias versionadas (`docs/PLANO_ATUALIZACAO.md` nos 2
-  repos, sempre md5-idênticas): inserir o corpo da Task 5, renumerar
-  títulos das Tasks 5–9, linhas da tabela de status e **referências
-  cruzadas no texto** (ex.: "resolve sozinho na Task 5" no HANDOFF do
-  minimax = antiga Task 5 de MCPs → nova Task 6).
-- HANDOFFs dos 2 repos: linhas da tabela 5–9 deslocam; nova linha 5.
-- **Coordenação:** o usuário edita o plano em outro lugar (sessão
-  paralela) — renumeração num commit atômico; avisar o usuário antes de
-  aplicar p/ ele pausar a edição ali.
+  repos, sempre md5-idênticas): inserir o corpo da Task 10 após a Task 9,
+  nova linha `| 10 |` na tabela de status, "10 tasks" → "11 tasks".
+  **Nenhuma renumeração** — referências cruzadas ("Task 5" = MCPs etc.)
+  e o texto das sessões paralelas permanecem válidos.
+- HANDOFFs dos 2 repos: ganham linha `| 10 |` na tabela.
 - Ordem de execução livre: análise estática, não usa GPU, não briga com
   as Tasks 4/6/7 em andamento.
 
@@ -69,7 +66,7 @@
 
 1. `docs/SOLID_AUDIT.md` existe nos 2 repos com os 5 blocos
    (métricas S/O, L/I/D, acoplamento, backlog priorizado, veredito).
-2. HANDOFF de cada repo tem seção resumo + linha 5 da tabela.
-3. Plano mestre + 3 cópias com Task 5 nova e Tasks 5–9 renumeradas,
+2. HANDOFF de cada repo tem seção resumo + linha 10 da tabela.
+3. Plano mestre + 3 cópias com Task 10 adicionada (sem renumeração),
    md5-idênticos.
 4. `git status` limpo de código; suítes inalteradas (nenhuma execução).

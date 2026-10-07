@@ -8,7 +8,7 @@ Docker, atualizar os MCPs do OpenCode, validar com a matriz completa de
 testes (unit/TDD/tools/API/renders reais), drenar a fila do insta_kb e
 documentar tudo com diagramas.
 
-**Architecture:** Execução sequencial em 10 tasks (Abordagem 1 — ordem por
+**Architecture:** Execução sequencial em 11 tasks (Abordagem 1 — ordem por
 risco), uma por fase do plano estratégico, cada uma terminando com verificação
 real, commit e status no HANDOFF. GPU de 12 GB tratada como recurso único:
 nenhum job de render/transcrição/Ollama simultâneo, em todas as tasks.
@@ -134,6 +134,7 @@ mesmos bind mounts.
 | 7 | Fila do insta_kb | ✅ (parada proposital) | drenagem parcial 329→322 ready, 0 dead, 7 ingests e2e (docs 3713→3719), 0 errors; parada graciosa por decisão do usuário (retomável); commit `473e773` (insta_kb) |
 | 8 | Documentação | ⏳ | |
 | 9 | Diagramas | ⏳ | |
+| 10 | Auditoria SOLID (avaliação) | ⏳ | |
 
 ---
 
@@ -1044,6 +1045,76 @@ pedido.
 Commit docs nos 2 repos. HANDOFF Task 9 ✅ — HANDOFFs mostram TODAS as tasks
 completas. Marcar linhas 8-9 e sincronizar as 3 cópias do plano (tabela toda
 ✅).
+
+---
+
+### Task 10: Auditoria SOLID (avaliação de refatoração)
+
+**Files:**
+- Read: `insta_kb/src/**` (~5,3k linhas), `minimax/src/**` (~1,8k linhas)
+- Create: `insta_kb/docs/SOLID_AUDIT.md`, `minimax/docs/SOLID_AUDIT.md`
+  (estrutura idêntica nos 2)
+- Modify: HANDOFF de cada repo (seção resumo + linha 10 da tabela)
+- **Nenhum arquivo de código alterado.** Ferramentas só via `uvx`
+  (one-off) — zero mudança em `pyproject.toml`/`uv.lock`.
+- Design aprovado: `insta_kb/docs/superpowers/specs/2026-10-07-solid-audit-task-design.md`
+
+**Interfaces:**
+- Consumes: baselines das Tasks 1-2 (168 / 9 passed — **citadas no
+  relatório, não re-executadas**) e o estado final das Tasks anteriores.
+- Produces: backlog priorizado (severidade × esforço) + veredito
+  **go/no-go por repo**. Análise estática: **sem GPU**, execução livre
+  em relação às outras tasks (não briga com 4/6/7).
+
+- [ ] **Step 1: Métricas one-off (sem tocar no lock)**
+
+```bash
+cd $HOME/localhost/insta_kb
+uvx radon cc src -s -j | tail -40      # complexidade ciclomática
+uvx radon mi src -j | tail -20          # manutenibilidade
+uvx vulture src --min-confidence 80     # dead code
+# grafo de imports/ciclos: script AST descartável em /tmp (não commitar;
+# pydeps opcional via uvx se necessário)
+cd $HOME/tools-local/minimax-video-factory
+uvx radon cc src -s -j | tail -30 && uvx radon mi src -j | tail -15
+uvx vulture src --min-confidence 80
+```
+Expected: ranking de funções complexas + dead code por repo; nenhum
+artefato versionado além do relatório.
+
+- [ ] **Step 2: Checklist S/O por módulo grande**
+
+Aplicar nos piores escores do Step 1 (já conhecidos: `ig_worker.py`
+1031 linhas, `infra/llm/client.py` 834, `core/knowledge/knowledge.py`
+732, `minimax_mcp/server.py` 433, `orchestrator.py` 341):
+- **S** — responsabilidades múltiplas por módulo/função (ex.:
+  download+transcrição+ingest+orquestação num mesmo arquivo).
+- **O** — cadeias if/elif sobre tipos (seleção de workflow, transports)
+  e extensibilidade dos MCP tools sem modificar código existente.
+
+- [ ] **Step 3: Checklist L/I/D + acoplamento**
+
+- **L** — hierarquias reais (transports do fastmcp, device paths do
+  transcriber); registrar `N/A` quando não houver hierarquia.
+- **I** — clientes monolíticos (`llm/client`, `comfyui_client`),
+  contagem de tools por serviço (cada tool = contrato?).
+- **D** — grafo de imports: camada alta importando infra direto
+  (ig_worker → instagrapi/db/ollama), **ciclos**, tangle por módulo.
+
+- [ ] **Step 4: Síntese — backlog + veredito**
+
+Findings classificados **crítico / importante / menor / cosmético**
+(cosméticos só em apêndice — não poluem o relatório); backlog final
+ordenado por **severidade × esforço**; veredito **go/no-go por repo**
+(refatorar agora / deixar p/ ciclo futura / não precisa).
+
+- [ ] **Step 5: Entregável + HANDOFF + plano**
+
+`docs/SOLID_AUDIT.md` nos 2 repos com os blocos (métricas, S/O, L/I/D,
+acoplamento, backlog, veredito). **Guardrail:** nenhum path `/home/<user>`
+no relatório (repo minimax é público; `tests/unit_privacy.py` derruba a
+suíte). Seção resumo + ponteiro no HANDOFF de cada repo; linha 10 da
+tabela nas 3 cópias do plano (md5 sync). Commits separados por repo.
 
 ---
 
