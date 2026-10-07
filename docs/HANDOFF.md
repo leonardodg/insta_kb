@@ -466,3 +466,56 @@ deps documentada em `docs/PLANO_ATUALIZACAO.md`. Reconciliação feita:
 **Não toquei** no restante do WIP de `update/deps-2026-10` (bump fastmcp,
 instagrapi, fastapi, lock --upgrade) — é o plano do usuário em andamento,
 fora do escopo desta reconciliação.
+
+## 2026-10-07 — Task 4 (docs/PLANO_ATUALIZACAO.md): venv do devcontainer quebrava o `.venv` do host
+
+Ao preparar os novos serviços `api`/`worker`/`mcp` (isolamento em Docker,
+Task 4), achado um bug real no devcontainer interativo que já existia antes
+desta sessão: `.devcontainer/Dockerfile` colocava o venv em `/app/.venv`,
+e `/app` é bind-mount do host em runtime (`volumes: [../:/app]`). Dois
+problemas independentes:
+
+1. Rodar `uv run`/`uv sync` **dentro** do container reescrevia o symlink
+   `/app/.venv` (que no namespace do container apontava pra um cache
+   inexistente) para um caminho que só existe dentro do container —
+   quebrando silenciosamente o `.venv` do HOST na próxima vez que o usuário
+   rodasse `uv`/`pytest` fora do container. Reproduzido e corrigido na hora
+   com `uv sync` no host (169 testes voltaram a passar).
+2. Mesmo tentando compartilhar via bind-mount do cache do host no mesmo path
+   absoluto, o `pyvenv.cfg` do venv grava o caminho do interpretador do HOST
+   (`/usr/bin/python3`), que não existe em nenhuma imagem de container — e
+   o venv carrega extensões compiladas (psycopg, av/PyAV, ctranslate2,
+   pydantic-core) contra libs do host, não portáveis entre bases Debian
+   diferentes. Um venv genuinamente compartilhado host↔container não é
+   seguro de montar assim.
+
+**Fix** (`bf824e5` + follow-up do review): venv isolado em `/opt/venv`,
+inteiramente dentro da imagem, nunca no bind-mount. Decisão consciente:
+isso duplica os pacotes Python em disco dentro da imagem (não duplica
+*download*, já que `uv` usa o cache de wheels normalmente) em troca de
+nunca mais quebrar o ambiente do host — compartilhar não era seguro.
+`UV_PYTHON_PREFERENCE` mudou de `only-managed` pra `only-system` (a imagem
+já tem Python 3.14; o Python gerenciado pelo `uv` ficava em
+`/root/.local/share/uv/python/...`, inacessível pro `appuser` não-root).
+Adicionado também: `ffmpeg` (faltava no apt-get) e `nvidia-cublas-cu12`/
+`nvidia-cudnn-cu12` + `LD_LIBRARY_PATH` pro `ctranslate2`/`faster-whisper`
+rodar com GPU dentro do container (mesmo padrão já usado em
+`minimax-video-factory/docker/Dockerfile` e `Dockerfile.python` — conferido,
+já estava correto lá, nada a replicar). `uv sync --no-install-project
+--no-dev` trocado pra `--frozen` (usa o lock commitado, não re-resolve), e
+`COPY . /app` movido pra depois do `uv sync` (a cópia do repo inteiro antes
+invalidava a camada de cache de deps a cada mudança de qualquer arquivo).
+
+Também achado nesta janela: `.pgdata_empty_devcontainer_bak` (diretório
+root-owned, 0700, resquício de um backup antigo de dados do Postgres)
+bloqueava o `docker build` inteiro com "permission denied" ao ler o
+contexto — resolvido com entrada no `.dockerignore` (não apagado: a
+remoção foi bloqueada pelo classificador de permissões desta sessão; não
+é segredo nem dado real, é lixo de disco).
+
+Validado: `docker compose -f .devcontainer/docker-compose.yml run --rm
+--no-deps python sh -c 'python -c "import fastapi, sqlalchemy, psycopg,
+pydantic, ctranslate2"'` funciona sem precisar de `uv run`; `.venv` do
+host comparado antes/depois do rebuild, idêntico; `uv run pytest -q` no
+host: 169 passed (mesmo baseline). Devcontainer interativo (VS Code) ainda
+não reaberto pelo usuário para confirmação final — pendência.

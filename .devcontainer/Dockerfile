@@ -29,23 +29,38 @@ ENV UV_PROJECT_ENVIRONMENT=/opt/venv
 ENV PATH="${VIRTUAL_ENV}/bin:${PATH}"
 
 # Install OS packages we need for building and runtime
+# ffmpeg: faster-whisper/av need it to decode whatever container format
+# ig_worker downloads (Instagram videos aren't always a plain WAV/MP4 PCM).
 RUN apt-get update && apt-get install --no-install-recommends -y \
     build-essential \
     curl \
     git \
     ca-certificates \
+    ffmpeg \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 
 WORKDIR /app
 
 RUN pip install uv
-COPY pyproject.toml uv.lock* ./
+# Only pyproject.toml + uv.lock for this layer: --no-install-project already
+# skips installing the project itself, so uv sync needs no source files --
+# copying the whole repo here (`COPY . /app`, now moved below) invalidated
+# this cache layer on every file change, rebuilding the venv even for
+# doc-only edits (review finding, 2026-10-07).
+COPY pyproject.toml uv.lock ./
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --no-install-project --no-dev
 
 COPY . /app
-RUN --mount=type=cache,target=/root/.cache/uv \
-    uv lock && \
-    uv sync --no-install-project --no-dev
+
+# ctranslate2 (inside faster-whisper) links libcublas.so.12 and libcudnn at
+# runtime -- the base image has no CUDA toolkit, and nvidia-container-toolkit
+# only passes through the driver (libcuda.so), not these runtime libs. Same
+# fix already applied in minimax-video-factory's docker/Dockerfile.python.
+RUN uv pip install --python /opt/venv/bin/python --no-cache-dir \
+      nvidia-cublas-cu12 nvidia-cudnn-cu12
+ENV LD_LIBRARY_PATH="/opt/venv/lib/python3.14/site-packages/nvidia/cublas/lib:/opt/venv/lib/python3.14/site-packages/nvidia/cudnn/lib:${LD_LIBRARY_PATH}"
 
 # Create non-root user and ensure ownership of persistent folders. Also make the venv accessible.
 RUN useradd --create-home --shell /bin/bash appuser \
