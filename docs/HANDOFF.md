@@ -609,7 +609,16 @@ re-baixar nada. `OLLAMA_URL` dos 3 serviços trocado pra
 `http://ollama:11434`; `extra_hosts`/`host.docker.internal` removidos.
 Dois servidores Ollama agora coexistem (host + container) — mesma
 disputa de GPU que o mutex (`infra/gpu_lock`) já existe pra resolver, não
-um problema novo. **Em teste no momento deste registro.**
+um problema novo.
+
+**Validado 2026-10-07 ~18:02** — exigiu 2 fixes além do compose:
+(1) recriar api/worker/mcp (containers criados antes da troca ainda com
+a env antiga `host.docker.internal`); (2) **pinar `image:
+ollama/ollama:0.32.9`** — o `latest` (0.40+) migra o store pra
+`manifests-v2` e falha com o mount `:ro` (`mkdir ... read-only file
+system` → 404/400 em todo request). Com a mesma versão do host, todos os
+modelos ficam visíveis; worker drenando a fila com ingests reais
+(docs 3720+, 0 falhas).
 
 ---
 
