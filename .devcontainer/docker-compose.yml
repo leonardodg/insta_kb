@@ -6,8 +6,12 @@ services:
     volumes:
       - ../:/app
     ports:
-      - "${API_PORT:-8084}:8000"
-      - "${MCP_PORT:-8849}:8000"
+      # 127.0.0.1 on purpose, same as postgres/rabbitmq below: the REST API
+      # has no authentication (see docs/HANDOFF.md security review) --
+      # exposing it on all interfaces would put kb_export's write and
+      # ig_worker_start/stop's control actions reachable from the network.
+      - "127.0.0.1:${API_PORT:-8084}:8000"
+      - "127.0.0.1:${MCP_PORT:-8849}:8000"
     user: appuser
     env_file:
       - ../.env

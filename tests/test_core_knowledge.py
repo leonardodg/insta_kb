@@ -228,6 +228,42 @@ def test_export_documents_requires_ids():
     assert knowledge.export_documents([]) == {"ok": False, "error": "ids required"}
 
 
+def test_export_documents_rejects_path_traversal_outside_output():
+    # output_dir is caller-controlled over the unauthenticated REST API
+    # (POST /knowledge/export) -- must not be able to point writes outside
+    # {PROJECT_ROOT}/output, no matter how it tries.
+    result = knowledge.export_documents([1], output_dir="../../etc")
+    assert result["ok"] is False
+    assert "output_dir" in result["error"]
+
+
+def test_export_documents_rejects_absolute_path_outside_output():
+    result = knowledge.export_documents([1], output_dir="/etc")
+    assert result["ok"] is False
+    assert "output_dir" in result["error"]
+
+
+def test_export_documents_accepts_subdirectory_of_output(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    session = FakeSession()
+    monkeypatch.setattr(knowledge.db, "get_session", lambda: session)
+
+    class FakeExecResult:
+        def scalars(self) -> "FakeExecResult":
+            return self
+
+        def all(self) -> list[FakeDoc]:
+            return []
+
+    def _execute(stmt: Any) -> FakeExecResult:
+        return FakeExecResult()
+
+    monkeypatch.setattr(session, "execute", _execute, raising=False)
+    result = knowledge.export_documents([999], output_dir="output/kb-export/sub")
+    assert result["ok"] is True
+
+
 def test_export_documents_missing_id_reported_without_aborting(
     monkeypatch: pytest.MonkeyPatch,
 ):

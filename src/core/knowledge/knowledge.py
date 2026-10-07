@@ -669,9 +669,20 @@ def export_documents(
     per-file `ok` is True only when the file was actually written; when the
     vault skips (empty output_dir, write error) `ok` is False and `skipped`
     is True. Missing ids are reported per-file without aborting the rest.
+
+    `output_dir` is caller-controlled -- reachable over the unauthenticated
+    REST API (`POST /knowledge/export`). Resolved and checked against a
+    fixed base before any write, so a caller can't point it at an arbitrary
+    path (`../../etc`, an absolute path outside the project, a symlink
+    escape) and get this process to write files there. The base is
+    `{PROJECT_ROOT}/output` -- same tree the export already defaults into.
     """
     if not ids:
         return {"ok": False, "error": "ids required"}
+    base = (Path(settings.PROJECT_ROOT) / "output").resolve()
+    resolved = (Path(settings.PROJECT_ROOT) / output_dir).resolve()
+    if base != resolved and base not in resolved.parents:
+        return {"ok": False, "error": f"output_dir must stay under {base}"}
     session = db.get_session()
     try:
         rows = (
