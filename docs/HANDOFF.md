@@ -24,11 +24,11 @@ versionadas em `docs/PLANO_ATUALIZACAO.md` (este repo) e no minimax-video-factor
 | 2 | Deps minimax | ✅ | `fastmcp>=4.0.11`+`av==18.1.0` (pin novo); commits `715216e`+`83c8354` |
 | 3 | ComfyUI v0.39.1 + nodes + pesos | ✅ | v0.39.1 + nodes atualizados + 3 pesos novos; render turbo validado; commit `ae944c1` (minimax) |
 | 4 | Docker insta_kb (Parte B) | ✅ | venv isolado em `/opt/venv` (bf824e5+02140f1, achado real: `/app/.venv` quebrava o `.venv` do host); rede `insta-kb-net` + serviços `api`/`worker`/`mcp` (`984e03c`); Ollama fica no HOST (processo, não container) via `host.docker.internal`, coexistindo por ora com o que seria containerizado depois (decisão do usuário); `DATABASE_URL`/`RABBITMQ_URL` completas (não só `*_HOST` -- `Settings` não reflow a partir de env); comandos via venv direto, não `uv run`; `.mcp.json` → HTTP; worker containerizado validado com post real da fila (pausado/retomado por controle do usuário) |
-| 5 | MCPs do OpenCode | ⏳ | |
-| 6 | Matriz de testes | ⏳ | |
-| 7 | Fila do insta_kb (329 msgs) | ✅ (parada proposital) | drenagem parcial 12:56–13:05: 329→**322** ready, 0 dead, **7 ingests** (docs 3713→3719), 0 errors; ver seção abaixo |
-| 8 | Documentação | ⏳ | |
-| 9 | Diagramas | ⏳ | |
+| 5 | MCPs do OpenCode | ✅ | inventário + `.mcp.json`→HTTP (`streamable-http :8849`); testes reais desta sessão: **7 tools insta-kb** verdes com shapes exatos Ok/Err (skip documentado: `ig_worker_start/stop` com worker ativo, `knowledge_reindex` custosa — cobertas por unit); `MODELS_DIR` stale corrigido no `opencode.json` (restart do OpenCode pendente, ação do usuário) |
+| 6 | Matriz de testes | ✅ | baselines 168+9 → **206+11**; suítes ×2 (pytest/ruff/pyright/bandit/pip-audit + `unit_privacy`); tools MCP exercitadas de verdade: insta-kb 7 + minimax remote 3 + uv stdio 2; `_uv_health` ok:false = MODELS_DIR stale (corrigido); incidente de render documentado no HANDOFF do minimax |
+| 7 | Fila do insta_kb (329 msgs) | ✅ (drenando) | drenagem inicial 329→322 (7 ingests e2e, docs 3713→3719, 0 errors/0 dead); após o fix do Ollama containerizado a fila real drenou sozinha **322→193 ready** (snapshot da MCP `ig_queue_status`: 193 ready, 0 dead, 1 consumer ativo); pausável/retomável via `ig_worker_start`/`POST /ig/worker/start` |
+| 8 | Documentação | ✅ | README sweep (136→206, FastMCP 4.x, portas 8085→8084, transporte HTTP do `.mcp.json`, seção Claude Code, av 18.1.0); `.env-example` limpo de restos do minimax; `mkdocs build --strict` verdes ×2; commits `53a92ae` (insta_kb) + `fe4fc82` (minimax) |
+| 9 | Diagramas | ✅ | `docs/ARQUITETURA.md` (3 Mermaid: estrutura/stack/fluxo) + `docs/index.md` + `mkdocs.yml` + `.github/workflows/docs.yml` (build --strict + deploy Pages + assert sem fontes no artefato); link "Arquitetura" no README; render `<pre class="mermaid">` ×3 verificado; graphify não solicitado |
 | 10 | Auditoria SOLID (avaliação) | ✅ | relatório `docs/SOLID_AUDIT.md` (314 l., 0 crítico); veredito **ciclo futura**; ver seção abaixo |
 
 Regra de GPU durante toda a execução: 1 job (render/transcrição/Ollama) por
@@ -720,12 +720,44 @@ nos pre-commit hooks.
 - minimax `631bbaf..7fb3c21` → **"Yes, but fast-follow"**. Importante:
   erros de **transporte** (`httpx`/`TimeoutError`/`OSError`) no poll de
   `/history`/`/prompt` escapam de `ComfyUITimeout` → `core.py` solta o
-  lock de GPU com payload sem `prompt_id`/`timed_out`. **Pendente
-  (próximo item).** Menores: poll triplo de `/history`, docstring,
-  `COMMANDS.md` stale 240s, reset de teste.
+  lock de GPU com payload sem `prompt_id`/`timed_out`. **Resolvido no
+  fast-follow `cc17351`** (guard no `_poll` + fallback HTTP-only +
+  `prompt_id` no payload; TDD, 11 passed). Menores: poll triplo de
+  `/history`, docstring, `COMMANDS.md` stale 240s, reset de teste.
 
-**Próximos:** fast-follow minimax (guard de transporte no `_poll`) ·
-refazer testes MCP · docs+diagramas ×2 · page de docs do insta_kb +
-link do README · sync do plano (3 cópias md5) + HANDOFF · suítes finais
-+ commits/PR · **por último (pedido do usuário): testes reais de criação
-de vídeo**.
+## ✅ 2026-10-07 — fechamento: MCPs testados + docs/diagramas (Tasks 5/6/8/9)
+
+**Testes MCP (retomados do Step 3 da Task 5/6):** insta-kb — 7 tools
+chamadas de verdade (`kb_list_documents`, `kb_export_search`,
+`knowledge_search`, `knowledge_ask`, `ig_queue_status`, `ig_get_progress`,
+`kb_export`), cada uma conferida contra o shape Ok/Err do par em
+`core/contracts.py`; skip documentado: `ig_worker_start/stop` (worker
+ativo na sessão) e `knowledge_reindex` (recalcula 13k embeddings — unit
+test cobre). minimax remote (8848): `health_check`, `queue_status`,
+`list_outputs`; uv stdio: 2 tools. `_uv_health` ok:false **não é bug do
+repo**: `MODELS_DIR` apontava pro caminho antigo do modelo — corrigido em
+`opencode.json`, **restart do OpenCode pendente (ação sua)**.
+
+**Docs/diagramas (Tasks 8/9):** README sweep (testes 136→**206**,
+FastMCP **4.x**, portas **8084** — a API real vive em 8084, `.env:86`,
+8085 era stale —, registro MCP = streamable-http `:8849` como o
+`.mcp.json` manda, seção Claude Code reescrita, `av 18.1.0` na tabela);
+`.env-example` limpo de resquícios do minimax (`mcp_http_runner.sh`,
+`src/minimax_mcp/server.py` não existem aqui); site MkDocs novo
+(`mkdocs.yml` + `docs/index.md` + `docs/ARQUITETURA.md` com 3 Mermaid)
+com **GitHub Pages via workflow** (`docs.yml`: `uv sync --only-group
+docs`, `mkdocs build --strict`, assert de que só HTML/CSS/JS sobe);
+`check-yaml` isenta `mkdocs.yml` (tags `!!python/name`). No minimax:
+`docs/ARQUITETURA.md` + `MCP_TOOLS.md` regenerado + sweep v0.39.1.
+
+**Suíte final antes do PR:** `206 passed` + `ruff` 0 + `pyright` 0
+(re-rodar no passo de commits/PR).
+
+**Pendências restantes (nenhuma bloqueante):**
+1. **Reiniciar o OpenCode** (ação sua) — `MODELS_DIR` novo vale a partir
+   do restart; instâncias MCP recarregam junto.
+2. Fila do insta_kb drenando sozinha (snapshot: 193 ready, 0 dead,
+   1 consumer) — pausar/retomar com `ig_worker_start`/`ig_worker_stop`.
+3. **Último passo do plano (pedido seu): testes reais de criação de
+   vídeo**, após os commits/PR desta branch.
+4. graphify (Task 9 Step 4, opcional) — não solicitado; Mermaid cobre.

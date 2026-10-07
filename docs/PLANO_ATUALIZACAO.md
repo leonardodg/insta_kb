@@ -129,11 +129,11 @@ mesmos bind mounts.
 | 2 | Deps minimax | ✅ | `fastmcp>=4.0.11`+`av==18.1.0` (pin novo)+`requires-python>=3.11`; lock yt-dlp 2026.8.19/pydantic 2.13.5/ruff 0.16.10/pylint 4.1.2; review: sem breaking no server, fixes pós-review; 9/9+privacy+ruff ✅; commits `715216e`+`83c8454` |
 | 3 | ComfyUI + nodes + pesos | ✅ | v0.39.1 + nodes já atualizados + 3 pesos novos (turbo loras fl2v/ref2v + vae int8_convrot, 6,7 GB); render turbo validado (seed 42, 512x320, 5s, vídeo+áudio estéreo OK); commit `ae944c1` |
 | 4 | Docker insta_kb (Parte B) | ✅ (Ollama corrigido) | venv isolado `/opt/venv`; rede `insta-kb-net` + api/worker/mcp; Ollama CONTAINERIZADO na rede (host.docker.internal não alcançava `insta-kb-net` -- firewall; corrigido depois de causar um incidente real); `.mcp.json`→HTTP; mutex de GPU compartilhado com minimax; commits `bf824e5`+`02140f1`+`984e03c`+posteriores |
-| 5 | MCPs do OpenCode | 🔶 parcial | inventário feito; `insta-kb` global trocado pra HTTP; pendente: reload do OpenCode (ação do usuário) pra Steps 4-5 |
-| 6 | Matriz de testes | 🔶 parcial | Steps 1/2/4 feitos; Step 3 bloqueado (reload pendente); Step 5 feito com incidente real documentado (ver HANDOFF) |
+| 5 | MCPs do OpenCode | ✅ | inventário + `.mcp.json`→HTTP; testes reais: insta-kb **7 tools** + minimax remote **3** + uv stdio **2** verdes (shapes Ok/Err exatos); `MODELS_DIR` stale corrigido no opencode.json (restart do OpenCode pendente — ação do usuário) |
+| 6 | Matriz de testes | ✅ | baselines 168+9 → **206+11**; suites ×2 (pytest/ruff/pyright/bandit/pip-audit + privacy) verdes; tools MCP exercitadas de verdade (12 chamadas); skip documentado: ig_worker_start/stop (worker ativo), knowledge_reindex (custosa) — cobertas por unit; incidente de render documentado no HANDOFF do minimax |
 | 7 | Fila do insta_kb | ✅ (em andamento) | 322→199 ready processados após fix do Ollama containerizado (queue real drenando sozinha, worker rodando); 0 dead observado; retomável/pausável via ig_worker_start/stop |
 | 8 | Documentação | ✅ | site MkDocs nos 2 repos (mkdocs.yml + mkdocstrings); README/HANDOFF atualizados; commits `53a92ae` (insta_kb) + `fe4fc82` (minimax) |
-| 9 | Diagramas | ✅ | docs/ARQUITETURA.md com 3 diagramas Mermaid nos 2 repos; feito junto com a Task 8 pela mesma sessão paralela |
+| 9 | Diagramas | ✅ | docs/ARQUITETURA.md com 3 diagramas Mermaid nos 2 repos (render verificado no `mkdocs build --strict`: `<pre class="mermaid">` ×3); links "Arquitetura" nos 2 READMEs + Pages workflow novo no insta_kb; graphify não solicitado — Mermaid cobre o pedido |
 | 10 | Auditoria SOLID (avaliação) | ✅ | relatórios `docs/SOLID_AUDIT.md` ×2 (314 l. insta_kb / 231 l. minimax, só avaliação); veredito **ciclo futura** nos 2; 1 bug-crítico `state=rendering` (minimax) + backlog 12 itens (insta_kb); commits `02f760a`+`76c60a6` |
 
 ---
