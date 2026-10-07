@@ -580,3 +580,33 @@ no momento deste HANDOFF).
 ⚠️ **Limitação aceita, registrada dos dois lados:** sem detector de lock
 órfão — se um processo morrer sem liberar (crash, `kill -9`), o lock
 fica preso até alguém apagar `~/.gpu-lock/gpu.lock`/`gpu.holder` à mão.
+
+---
+
+## 2026-10-07 — Ollama containerizado (host.docker.internal não funcionava)
+
+Achado durante a Task 6 (matriz de testes, Step 5): `OLLAMA_URL=http://
+host.docker.internal:11434` (decisão da Task 4) **não é alcançável a
+partir da rede `insta-kb-net`** — testado de dentro de
+`devcontainer-worker-1`: timeout sempre. Comparando um container solto na
+bridge padrão do Docker (200 OK) contra um na `insta-kb-net` (timeout): o
+firewall do host deixa passar a bridge padrão, bloqueia a customizada. É
+exatamente o que o `.env` antigo descrevia — eu tinha avaliado esse
+comentário como desatualizado cedo demais, confirmando só com um container
+solto na bridge errada.
+
+**Consequência real:** o worker ficou preso em retry de "screen read
+failed" (chamada à Ollama pra descrever frame de vídeo) — um post chegou
+a falhar de verdade (`LLM generation failed: Connection timed out`)
+durante uma janela em que também coincidiu um render no minimax (ver
+detalhe completo do incidente no HANDOFF do minimax-video-factory).
+
+**Fix:** serviço `ollama` novo em `.devcontainer/docker-compose.yml`, na
+própria `insta-kb-net` — container-pra-container nunca cruza o firewall
+do host. Monta **read-only** `/home/ollama_models/.ollama` (133 GB, onde o
+`ollama serve` do host já guarda os modelos) — sem duplicar nem
+re-baixar nada. `OLLAMA_URL` dos 3 serviços trocado pra
+`http://ollama:11434`; `extra_hosts`/`host.docker.internal` removidos.
+Dois servidores Ollama agora coexistem (host + container) — mesma
+disputa de GPU que o mutex (`infra/gpu_lock`) já existe pra resolver, não
+um problema novo. **Em teste no momento deste registro.**

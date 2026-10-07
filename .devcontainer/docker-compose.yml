@@ -61,29 +61,51 @@ services:
     volumes:
       - ${RABBITMQ_DATA_DIR:-../.rabbitmq}:/var/lib/rabbitmq
 
-  # api/worker/mcp all talk to Ollama on the HOST (not a container -- the
-  # host already runs the one Ollama instance this machine has GPU budget
-  # for, shared with minimax-video-factory's renders; see CLAUDE.md "O
-  # ig-worker disputa a MESMA GPU"). `host.docker.internal` + host-gateway
-  # is the standard way a Linux container reaches a host-bound port without
-  # `network_mode: host` (tested 2026-10-07: a plain container resolves it
-  # and reaches :11434 fine). The old .env comment ("containers can't reach
-  # localhost, worker must run on host") was stale -- confirmed with the
-  # user this session; DATABASE_URL/RABBITMQ_URL below are full URLs, not
-  # just *_HOST, because Settings (src/core/settings/config.py) builds those
-  # fields once from literal defaults at class-definition time -- setting
-  # only POSTGRES_HOST/RABBITMQ_HOST env vars would silently not reach them.
+  # Ollama, containerized -- NOT host.docker.internal. First tried pointing
+  # at the host's `ollama serve` process via host.docker.internal:11434;
+  # worked from a one-off container on Docker's default bridge network, but
+  # NOT from this compose's custom `insta-kb-net` bridge -- the host
+  # firewall allows the default bridge subnet through to the host but
+  # blocks insta-kb-net's (confirmed 2026-10-07 by comparing both networks
+  # side by side: default bridge -> 200 OK, insta-kb-net -> timeout every
+  # time). That's what the old .env comment ("containers can't reach
+  # Ollama, worker must run on host") was actually describing -- real, just
+  # scoped to custom networks, not every container. Containerizing Ollama
+  # on insta-kb-net sidesteps the firewall path entirely: container-to-
+  # container traffic on a user-defined network never crosses it.
+  # Read-only bind of the HOST Ollama's existing model store (133 GB,
+  # /home/ollama_models/.ollama) -- no re-download, no duplication; this
+  # container serves the exact same files the host's `ollama serve`
+  # process does. The host process keeps running (coexistence decision,
+  # see docs/HANDOFF.md) -- two Ollama *servers* sharing the GPU is the
+  # same contention the shared GPU mutex (src/infra/gpu_lock) exists for;
+  # not solved by this container, a separate concern from the networking
+  # fix here.
+  ollama:
+    image: ollama/ollama
+    restart: unless-stopped
+    networks: [insta-kb-net]
+    environment:
+      OLLAMA_MAX_LOADED_MODELS: "1"
+    volumes:
+      - /home/ollama_models/.ollama:/root/.ollama:ro
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
   api:
     build:
       context: ../
       dockerfile: ./.devcontainer/Dockerfile
     networks: [insta-kb-net]
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
     env_file:
       - ../.env
     environment:
-      OLLAMA_URL: http://host.docker.internal:11434
+      OLLAMA_URL: http://ollama:11434
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-kb}:${POSTGRES_PASSWORD:-kb}@postgres:5432/${POSTGRES_DB:-knowledge}
       RABBITMQ_URL: amqp://${RABBITMQ_USER:-guest}:${RABBITMQ_PASS:-guest}@rabbitmq:5672/
       GPU_LOCK_DIR: /var/lib/gpu-lock
@@ -92,7 +114,7 @@ services:
       # No auth on the REST API (see docs/HANDOFF.md security review) --
       # 127.0.0.1 only, same reasoning as postgres/rabbitmq above.
       - "127.0.0.1:${API_PORT:-8084}:8000"
-    depends_on: [postgres, rabbitmq]
+    depends_on: [postgres, rabbitmq, ollama]
     volumes:
       - ../:/app
       # Shared with minimax-video-factory's MCP server (same host path,
@@ -105,17 +127,15 @@ services:
       context: ../
       dockerfile: ./.devcontainer/Dockerfile
     networks: [insta-kb-net]
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
     env_file:
       - ../.env
     environment:
-      OLLAMA_URL: http://host.docker.internal:11434
+      OLLAMA_URL: http://ollama:11434
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-kb}:${POSTGRES_PASSWORD:-kb}@postgres:5432/${POSTGRES_DB:-knowledge}
       RABBITMQ_URL: amqp://${RABBITMQ_USER:-guest}:${RABBITMQ_PASS:-guest}@rabbitmq:5672/
       GPU_LOCK_DIR: /var/lib/gpu-lock
     command: /opt/venv/bin/python -m workers.ig_worker
-    depends_on: [postgres, rabbitmq]
+    depends_on: [postgres, rabbitmq, ollama]
     volumes:
       - ../:/app
       - ${HOME}/.gpu-lock:/var/lib/gpu-lock
@@ -133,12 +153,10 @@ services:
       context: ../
       dockerfile: ./.devcontainer/Dockerfile
     networks: [insta-kb-net]
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
     env_file:
       - ../.env
     environment:
-      OLLAMA_URL: http://host.docker.internal:11434
+      OLLAMA_URL: http://ollama:11434
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-kb}:${POSTGRES_PASSWORD:-kb}@postgres:5432/${POSTGRES_DB:-knowledge}
       RABBITMQ_URL: amqp://${RABBITMQ_USER:-guest}:${RABBITMQ_PASS:-guest}@rabbitmq:5672/
       MCP_TRANSPORT: streamable-http
@@ -147,7 +165,7 @@ services:
     command: /opt/venv/bin/python -m mcp_server.server
     ports:
       - "127.0.0.1:${MCP_PORT:-8849}:8849"
-    depends_on: [postgres, rabbitmq]
+    depends_on: [postgres, rabbitmq, ollama]
     volumes:
       - ../:/app
       - ${HOME}/.gpu-lock:/var/lib/gpu-lock

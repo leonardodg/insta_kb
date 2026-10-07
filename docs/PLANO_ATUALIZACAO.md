@@ -128,9 +128,9 @@ mesmos bind mounts.
 | 1 | Deps insta_kb | ✅ | `av==18.1.0`+`instagrapi>=3.0.20`+`fastmcp>=4.0.11`+`fastapi[standard]>=0.142.2`; lock uvicorn 0.54.0/ruff 0.16.10/pyright 1.1.414; 168 passed + smoke decode OK; review aplicado; `58e8093` |
 | 2 | Deps minimax | ✅ | `fastmcp>=4.0.11`+`av==18.1.0` (pin novo)+`requires-python>=3.11`; lock yt-dlp 2026.8.19/pydantic 2.13.5/ruff 0.16.10/pylint 4.1.2; review: sem breaking no server, fixes pós-review; 9/9+privacy+ruff ✅; commits `715216e`+`83c8454` |
 | 3 | ComfyUI + nodes + pesos | ✅ | v0.39.1 + nodes já atualizados + 3 pesos novos (turbo loras fl2v/ref2v + vae int8_convrot, 6,7 GB); render turbo validado (seed 42, 512x320, 5s, vídeo+áudio estéreo OK); commit `ae944c1` |
-| 4 | Docker insta_kb (Parte B) | ✅ | venv isolado `/opt/venv` (bug real: `/app/.venv` quebrava o `.venv` do host); rede `insta-kb-net` + api/worker/mcp; Ollama no host via `host.docker.internal`; `.mcp.json`→HTTP; worker validado com post real; commits `bf824e5`+`02140f1`+`984e03c` |
-| 5 | MCPs do OpenCode | ⏳ | |
-| 6 | Matriz de testes | ⏳ | |
+| 4 | Docker insta_kb (Parte B) | ✅ (Ollama corrigido) | venv isolado `/opt/venv`; rede `insta-kb-net` + api/worker/mcp; Ollama CONTAINERIZADO na rede (host.docker.internal não alcançava `insta-kb-net` -- firewall; corrigido depois de causar um incidente real); `.mcp.json`→HTTP; mutex de GPU compartilhado com minimax; commits `bf824e5`+`02140f1`+`984e03c`+posteriores |
+| 5 | MCPs do OpenCode | 🔶 parcial | inventário feito; `insta-kb` global trocado pra HTTP; pendente: reload do OpenCode (ação do usuário) pra Steps 4-5 |
+| 6 | Matriz de testes | 🔶 parcial | Steps 1/2/4 feitos; Step 3 bloqueado (reload pendente); Step 5 feito com incidente real documentado (ver HANDOFF) |
 | 7 | Fila do insta_kb | ✅ (parada proposital) | drenagem parcial 329→322 ready, 0 dead, 7 ingests e2e (docs 3713→3719), 0 errors; parada graciosa por decisão do usuário (retomável); commit `473e773` (insta_kb) |
 | 8 | Documentação | ⏳ | |
 | 9 | Diagramas | ⏳ | |
