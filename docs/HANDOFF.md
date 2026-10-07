@@ -21,9 +21,9 @@ versionadas em `docs/PLANO_ATUALIZACAO.md` (este repo) e no minimax-video-factor
 |---|---|---|---|
 | 0 | Commits pendentes + baseline + cópias do plano | ✅ | baseline `168 passed` (+9 no minimax); commits `e2095eb` (fail-soft+export), `9aaa257` (plano) |
 | 1 | Deps insta_kb | ✅ | `av==18.1.0`, `instagrapi>=3.0.20`, `fastmcp>=4.0.11`, `fastapi[standard]>=0.142.2`; lock: uvicorn 0.54.0, ruff 0.16.10, pyright 1.1.414, pydantic 2.13.5; suíte 168 passed + smoke `decode_audio` OK; review "with fixes" aplicado (telemetry verificado, floor fastapi ajustado); commit `58e8093` |
-| 2 | Deps minimax | ⏳ | |
-| 3 | ComfyUI v0.39.1 + nodes + pesos | ⏳ | |
-| 4 | Docker insta_kb (Parte B) | ⏳ | |
+| 2 | Deps minimax | ✅ | `fastmcp>=4.0.11`+`av==18.1.0` (pin novo); commits `715216e`+`83c8354` |
+| 3 | ComfyUI v0.39.1 + nodes + pesos | ✅ | v0.39.1 + nodes atualizados + 3 pesos novos; render turbo validado; commit `ae944c1` (minimax) |
+| 4 | Docker insta_kb (Parte B) | ✅ | venv isolado em `/opt/venv` (bf824e5+02140f1, achado real: `/app/.venv` quebrava o `.venv` do host); rede `insta-kb-net` + serviços `api`/`worker`/`mcp` (`984e03c`); Ollama fica no HOST (processo, não container) via `host.docker.internal`, coexistindo por ora com o que seria containerizado depois (decisão do usuário); `DATABASE_URL`/`RABBITMQ_URL` completas (não só `*_HOST` -- `Settings` não reflow a partir de env); comandos via venv direto, não `uv run`; `.mcp.json` → HTTP; worker containerizado validado com post real da fila (pausado/retomado por controle do usuário) |
 | 5 | MCPs do OpenCode | ⏳ | |
 | 6 | Matriz de testes | ⏳ | |
 | 7 | Fila do insta_kb (329 msgs) | ✅ (parada proposital) | drenagem parcial 12:56–13:05: 329→**322** ready, 0 dead, **7 ingests** (docs 3713→3719), 0 errors; ver seção abaixo |
