@@ -647,3 +647,39 @@ esforço (§5).
 backlog entram no próximo ciclo **antes** de novos tipos de mídia ou
 provedores LLM (`ig_worker` + `knowledge` concentram 53% das funções
 cc≥6).
+
+## 2026-10-07 — backlog SOLID em execução: itens #1 e #2 concluídos
+
+Escopo aprovado: executar o backlog §5 do `docs/SOLID_AUDIT.md` com TDD
+(Red → Green → verificação) — item por item, commit por item.
+
+**#1 — registry de provedores LLM (`1140949`)** · esforço S
+- `PROVIDERS = {"ollama": _ollama_generate, "openai-compatible": ...}` em
+  `infra/llm/client.py` vira a única fonte de verdade; tanto
+  `_generate_raw_with_retries` (generator resolvido **antes** do laço de
+  retry) quanto `chat` resolvem pelo mesmo dicionário. Novo provedor =
+  1 linha, 0 pontos de edição duplicados (antes: 4).
+- +2 testes: escopo do registry; dispatch de provedor novo em ambas as
+  cadeias (force_json=False no chat, True no estruturado, via API pública
+  `generate_structured`).
+
+**#2 — desacoplar api→mcp_server (`c3cfe93`)** · esforço S
+- Novo pacote `src/services/` com `ig_control.py`
+  (`queue_status`/`publish_control_command`/`get_progress`) extraído do
+  `mcp_server.server` — lógica na camada de aplicação.
+- `api/main.py`: 9 endpoints delegam p/ `services.ig_control` +
+  `core.knowledge`; o import de `mcp_server` **sumiu** (teste AST em
+  `test_api_main.py` impede regressão). Ferramentas MCP ig_* viram
+  delegações finas — REST e MCP são irmãos, nunca se importam (F5).
+- Melhora embutida: `connect()` movido para dentro do `try` — falha de
+  broker agora responde `{"ok": false, ...}` em vez de estourar exceção
+  no endpoint/ferramenta.
+- +7 testes (1 AST + 6 do serviço, portados dos testes MCP); suíte de
+  start/stop agora **valida o comando enviado** (antes o fake ignorava).
+
+**Verificação (ambos itens):** pytest 184→**191 passed**; `ruff check`,
+`ruff format`, `pyright` (0 erros), `bandit`, `pip-audit` — todos verdes
+nos pre-commit hooks.
+
+**Próximos:** #3 fatiar `ig_worker.py` (M) · #4 fatiar `knowledge.py` (M)
+· #5 TypedDict/Protocol (M) · code review · testes MCP+vídeo · docs.
