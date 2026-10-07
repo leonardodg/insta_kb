@@ -126,7 +126,7 @@ mesmos bind mounts.
 |---|---|---|---|
 | 0 | Commits pendentes + baseline | ✅ | branch `update/deps-2026-10` nos 2 repos; baseline 168+9; commits insta_kb `e2095eb`+`9aaa257`, minimax `44b6406`+`4b34bd2`+`376e6ae` |
 | 1 | Deps insta_kb | ✅ | `av==18.1.0`+`instagrapi>=3.0.20`+`fastmcp>=4.0.11`+`fastapi[standard]>=0.142.2`; lock uvicorn 0.54.0/ruff 0.16.10/pyright 1.1.414; 168 passed + smoke decode OK; review aplicado; `58e8093` |
-| 2 | Deps minimax | ⏳ | |
+| 2 | Deps minimax | ✅ | `fastmcp>=4.0.11`+`av==18.1.0` (pin novo)+`requires-python>=3.11`; lock yt-dlp 2026.8.19/pydantic 2.13.5/ruff 0.16.10/pylint 4.1.2; review: sem breaking no server, fixes pós-review; 9/9+privacy+ruff ✅; commits `715216e`+`83c8454` |
 | 3 | ComfyUI + nodes + pesos | ⏳ | |
 | 4 | Docker insta_kb (Parte B) | ⏳ | |
 | 5 | MCPs do OpenCode | ⏳ | |
@@ -154,10 +154,10 @@ mesmos bind mounts.
 - [ ] **Step 1: Mostrar diffs e obter aprovação**
 
 ```bash
-git -C /home/leodg/localhost/insta_kb diff --stat
-git -C /home/leodg/localhost/insta_kb diff
-git -C /home/leodg/tools-local/minimax-video-factory diff --stat
-git -C /home/leodg/tools-local/minimax-video-factory diff
+git -C $HOME/localhost/insta_kb diff --stat
+git -C $HOME/localhost/insta_kb diff
+git -C $HOME/tools-local/minimax-video-factory diff --stat
+git -C $HOME/tools-local/minimax-video-factory diff
 ```
 Expected: 2 arquivos no insta_kb (fail-soft + resolved path + 48 linhas de
 teste) e 5 no minimax; usuário confirma a divisão dos commits.
@@ -165,8 +165,8 @@ teste) e 5 no minimax; usuário confirma a divisão dos commits.
 - [ ] **Step 2: Baseline verde nos dois repos**
 
 ```bash
-cd /home/leodg/localhost/insta_kb && uv run pytest -q
-cd /home/leodg/tools-local/minimax-video-factory && uv run pytest -q
+cd $HOME/localhost/insta_kb && uv run pytest -q
+cd $HOME/tools-local/minimax-video-factory && uv run pytest -q
 ```
 Expected: insta_kb `168 passed` (ou mais); minimax todos os `unit_*` PASS.
 Registrar contagens exatas — é o baseline de regressão das próximas tasks.
@@ -177,7 +177,7 @@ Nota: a divisão em 2 commits originalmente proposta foi descartada — os hunks
 intercalam no mesmo arquivo (`knowledge.py`); commit único coerente.
 
 ```bash
-cd /home/leodg/localhost/insta_kb
+cd $HOME/localhost/insta_kb
 git add src/core/knowledge/knowledge.py tests/test_core_knowledge.py
 git commit -m "fix(knowledge): fail-soft nos tools MCP e export usa resolved path (+testes)"
 ```
@@ -187,7 +187,7 @@ passam.
 - [ ] **Step 4: Commits do minimax (2)**
 
 ```bash
-cd /home/leodg/tools-local/minimax-video-factory
+cd $HOME/tools-local/minimax-video-factory
 git add .env.example docker/docker-compose.yml scripts/config.sh
 git commit -m "build: default INT8 ConvRot + nvfp4 AWQ (compose, .env.example, config.sh)"
 git add docs/MCP_TOOLS.md scripts/generate_mcp_docs.py
@@ -198,12 +198,12 @@ Expected: 2 commits; `git status` só com o que sobrar.
 - [ ] **Step 5: Versionar as cópias do plano**
 
 ```bash
-cp ~/.claude/plans/vamos-atualizar-a-lista-groovy-sun.md /home/leodg/localhost/insta_kb/docs/PLANO_ATUALIZACAO.md
-cp ~/.claude/plans/vamos-atualizar-a-lista-groovy-sun.md /home/leodg/tools-local/minimax-video-factory/docs/PLANO_ATUALIZACAO.md
-git -C /home/leodg/localhost/insta_kb add docs/PLANO_ATUALIZACAO.md
-git -C /home/leodg/localhost/insta_kb commit -m "docs: plano de atualização 2026-10-07"
-git -C /home/leodg/tools-local/minimax-video-factory add docs/PLANO_ATUALIZACAO.md
-git -C /home/leodg/tools-local/minimax-video-factory commit -m "docs: plano de atualização 2026-10-07"
+cp ~/.claude/plans/vamos-atualizar-a-lista-groovy-sun.md $HOME/localhost/insta_kb/docs/PLANO_ATUALIZACAO.md
+cp ~/.claude/plans/vamos-atualizar-a-lista-groovy-sun.md $HOME/tools-local/minimax-video-factory/docs/PLANO_ATUALIZACAO.md
+git -C $HOME/localhost/insta_kb add docs/PLANO_ATUALIZACAO.md
+git -C $HOME/localhost/insta_kb commit -m "docs: plano de atualização 2026-10-07"
+git -C $HOME/tools-local/minimax-video-factory add docs/PLANO_ATUALIZACAO.md
+git -C $HOME/tools-local/minimax-video-factory commit -m "docs: plano de atualização 2026-10-07"
 ```
 Expected: `database.db*` continua untracked e fora dos commits.
 
@@ -256,7 +256,7 @@ Também: `"instagrapi>=2.1.0"` → `"instagrapi>=3.0.20"` e
 - [ ] **Step 3: Re-resolver o lock**
 
 ```bash
-cd /home/leodg/localhost/insta_kb && uv lock --upgrade
+cd $HOME/localhost/insta_kb && uv lock --upgrade
 grep -A1 '^name = "av"$' uv.lock | head -3
 grep -A1 '^name = "fastapi"$' uv.lock | head -2
 grep -A1 '^name = "uvicorn"$' uv.lock | head -2
@@ -281,7 +281,7 @@ queda de teste é regressão, não seguir.
 - [ ] **Step 5: Smoke de transcrição com av 18.1.0 (TDD do ambiente)**
 
 ```bash
-cd /home/leodg/localhost/insta_kb && uv run python - <<'EOF'
+cd $HOME/localhost/insta_kb && uv run python - <<'EOF'
 import wave, struct, math, av
 from faster_whisper.audio import decode_audio
 p = "/tmp/av18_smoke.wav"
@@ -347,7 +347,7 @@ Trocar `"fastmcp>=3.0.0"` → `"fastmcp>=4.0.11"`.
 - [ ] **Step 3: Re-resolver + conferir versões**
 
 ```bash
-cd /home/leodg/tools-local/minimax-video-factory && uv lock --upgrade
+cd $HOME/tools-local/minimax-video-factory && uv lock --upgrade
 grep -A1 '^name = "fastmcp"$' uv.lock | head -2   # 4.0.11
 grep -A1 '^name = "av"$' uv.lock | head -4        # 18.1.0 (não 19.x)
 grep -A1 '^name = "yt-dlp"$' uv.lock | head -2    # 2026.8.19+
@@ -377,7 +377,7 @@ HANDOFF e seguir.
 - [ ] **Step 6: Smoke do MCP via stdio host**
 
 ```bash
-cd /home/leodg/tools-local/minimax-video-factory
+cd $HOME/tools-local/minimax-video-factory
 timeout 15 uv run python -c "
 import os; os.environ['MCP_TRANSPORT']='stdio'
 from minimax_mcp.server import mcp
@@ -446,7 +446,7 @@ as duas fontes.
 - [ ] **Step 4: Rebuild**
 
 ```bash
-cd /home/leodg/tools-local/minimax-video-factory
+cd $HOME/tools-local/minimax-video-factory
 docker compose -f docker/docker-compose.yml build comfyui 2>&1 | tail -30
 ```
 Expected: build OK; log mostra checkout de `v0.39.1` (o passo
@@ -462,16 +462,21 @@ docker exec minimax-comfyui /opt/mcp-venv/bin/python -c \
 Expected: `fastmcp 4.0.11 | av 18.1.0`. Se não bater: o Dockerfile instala
 deps do projeto no build (`UV_PROJECT_ENVIRONMENT=/opt/mcp-venv`) — conferir
 se ele faz `uv sync` do lock atualizado e rebuildar com `--no-cache`.
+ATENÇÃO (review Task 2): `docker/Dockerfile` só copia `pyproject.toml`
+(não `uv.lock`) e o `uv sync` não usa `--frozen` — a imagem re-resolve dos
+ranges (`av==18.1.0` protege, `fastmcp>=4.0.11` flutua). Decidir aqui:
+`COPY uv.lock` + `uv sync --frozen` (reprodutível) ou registrar float
+intencional no HANDOFF.
 
 - [ ] **Step 6: Checkpoint de pesos (pedir OK — sem download antes)**
 
 ```bash
-cd /home/leodg/tools-local/minimax-video-factory && uv run python - <<'EOF'
+cd $HOME/tools-local/minimax-video-factory && uv run python - <<'EOF'
 import json, urllib.request, hashlib, os
 repo = "Comfy-Org/MiniMax-H3"
 api = json.load(urllib.request.urlopen(f"https://huggingface.co/api/models/{repo}"))
 files = {s["rfilename"]: s for s in api["siblings"]}
-roots = {"/comfy/ComfyUI/models": "/home/leodg/minimax/models"}
+roots = {"/comfy/ComfyUI/models": os.path.expanduser("~/minimax/models")}
 for path, localroot in roots.items():
     for name, meta in sorted(files.items()):
         local = os.path.join(localroot, name)
@@ -489,13 +494,13 @@ decidir re-download (script no momento do checkpoint). Baixar SÓ o aprovado:
 ```bash
 # exemplo para arquivo aprovado:
 huggingface-cli download Comfy-Org/MiniMax-H3 <arquivo> \
-  --local-dir /home/leodg/minimax/models
+  --local-dir $HOME/minimax/models
 ```
 
 - [ ] **Step 7: Subir stack + health check**
 
 ```bash
-cd /home/leodg/tools-local/minimax-video-factory
+cd $HOME/tools-local/minimax-video-factory
 docker compose -f docker/docker-compose.yml up -d comfyui
 sleep 20 && curl -s http://127.0.0.1:8188/system_stats | head -c 400
 ```
@@ -561,7 +566,7 @@ docker compose -f .devcontainer/docker-compose.yml run --rm --no-deps python \
 ```
 Expected: python/uv funcionando. Contexto: o bind `../:/app` cobre o
 `/app/.venv` da imagem com o `.venv` do host (symlink para
-`/home/leodg/.cache/uv/...`, invisível dentro do container). Se o
+`$HOME/.cache/uv/...`, invisível dentro do container). Se o
 interpretador estiver quebrado, os serviços novos não podem confiar no
 `VIRTUAL_ENV` da imagem — usar `uv run` (que sincroniza) como comando e
 registrar a descoberta. Este passo decide o formato dos comandos dos
@@ -601,7 +606,7 @@ services:
     environment:
       OLLAMA_MAX_LOADED_MODELS: "1"
     volumes:
-      - ${OLLAMA_MODELS_DIR:-/home/ollama_models/.ollama}:/root/.ollama
+      - ${OLLAMA_MODELS_DIR:?defina OLLAMA_MODELS_DIR no .env}:/root/.ollama
     deploy:
       resources:
         reservations:
@@ -664,8 +669,8 @@ services:
 ```
 
 postgres/rabbitmq: adicionar `networks: [insta-kb-net]` aos dois. Conferir
-`OLLAMA_MODELS_DIR` real no host (`ls /home/ollama_models/.ollama` existe?
-se o path for outro, ajustar). Confirmar porta interna do MCP: server usa
+Valor real de `OLLAMA_MODELS_DIR` (definido no `.env` do host; `ls` do path
++ `/.ollama` deve existir — ajustar se for outro). Confirmar porta interna: server usa
 `settings.MCP_PORT` (8849) — mapear 8849→8849 (corrigir do 8000 antigo).
 
 - [ ] **Step 5: Build + subir infra**
@@ -741,8 +746,8 @@ descoberta do Step 2 e o estado da GPU libs); linha 4 da tabela.
 
 ```bash
 grep -o '"minimax[^"]*"\|"insta-kb"' ~/.config/opencode/opencode.json \
-  /home/leodg/localhost/insta_kb/.mcp.json \
-  /home/leodg/tools-local/minimax-video-factory/.mcp.json | sort -u
+  $HOME/localhost/insta_kb/.mcp.json \
+  $HOME/tools-local/minimax-video-factory/.mcp.json | sort -u
 ```
 Expected: tabela (nome, tipo, comando/url). Confirmar quais estão `enabled`
 e mapear: 4 minimax (global) + insta-kb (HTTP novo) + 2 do minimax/.mcp.json.
@@ -751,7 +756,7 @@ e mapear: 4 minimax (global) + insta-kb (HTTP novo) + 2 do minimax/.mcp.json.
 
 ```bash
 # host (uv usa o lock novo automaticamente no próximo start):
-cd /home/leodg/tools-local/minimax-video-factory && uv run python -c "import fastmcp; print(fastmcp.__version__)"   # 4.0.11
+cd $HOME/tools-local/minimax-video-factory && uv run python -c "import fastmcp; print(fastmcp.__version__)"   # 4.0.11
 # container (Task 3 Step 5 já validou — repetir como confirmação):
 docker exec minimax-comfyui /opt/mcp-venv/bin/python -c "import fastmcp; print(fastmcp.__version__)"               # 4.0.11
 ```
@@ -793,8 +798,8 @@ cópias do plano.
 - [ ] **Step 1: Unit + TDD check**
 
 ```bash
-cd /home/leodg/localhost/insta_kb && uv run pytest -q
-cd /home/leodg/tools-local/minimax-video-factory && uv run pytest -q
+cd $HOME/localhost/insta_kb && uv run pytest -q
+cd $HOME/tools-local/minimax-video-factory && uv run pytest -q
 uv run ruff check . && uv run pyright   # insta_kb
 ```
 Expected: mesmo baseline Task 0 (168+/verde).
@@ -876,7 +881,7 @@ Expected: `ig.saved` ≈ 329; GPU livre. Se não livre, aguardar (regra global).
 - [ ] **Step 2: Subir o worker**
 
 ```bash
-cd /home/leodg/localhost/insta_kb
+cd $HOME/localhost/insta_kb
 docker compose -f .devcontainer/docker-compose.yml up -d worker
 docker compose -f .devcontainer/docker-compose.yml logs -f worker | head -40
 ```
@@ -927,7 +932,7 @@ HANDOFF Task 7 ✅ com contagens antes/depois; linha 7.
 - [ ] **Step 1: Regenerar MCP_TOOLS.md**
 
 ```bash
-cd /home/leodg/tools-local/minimax-video-factory
+cd $HOME/tools-local/minimax-video-factory
 uv run python scripts/generate_mcp_docs.py   # (--help se pedir args)
 git diff --stat docs/MCP_TOOLS.md
 ```
@@ -943,7 +948,7 @@ renders e a matriz do av. READMEs: tabela de stack/versões atualizada.
 - [ ] **Step 3: Validar builds de docs e CI**
 
 ```bash
-cd /home/leodg/tools-local/minimax-video-factory && uv run mkdocs build --strict
+cd $HOME/tools-local/minimax-video-factory && uv run mkdocs build --strict
 ```
 (insta_kb não tem mkdocs — validar só ruff/pyright/pytest, que já rodam no
 CI). Expected: build sem warnings; commit + push (pedir OK antes do push)
