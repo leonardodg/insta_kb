@@ -1,12 +1,8 @@
 {
   "mcpServers": {
     "insta-kb": {
-      "command": "uv",
-      "args": ["run", "python", "src/mcp_server/server.py"],
-      "cwd": "/home/leodg/localhost/insta_kb",
-      "env": {
-        "MCP_TRANSPORT": "stdio"
-      }
+      "type": "http",
+      "url": "http://127.0.0.1:8849/mcp"
     }
   }
 }

@@ -27,6 +27,14 @@ ENV VIRTUAL_ENV=/opt/venv
 ENV UV_PROJECT_ENVIRONMENT=/opt/venv
 # Ensure system directories are present on PATH so core utilities (sleep, sh, etc.) are available.
 ENV PATH="${VIRTUAL_ENV}/bin:${PATH}"
+# `--no-install-project` at build time means the project itself was never
+# pip-installed into /opt/venv (deps only) -- this is what lets api/worker/mcp
+# below invoke the venv's python/uvicorn directly (no `uv run`, which would
+# otherwise re-sync -- including dev deps like ruff/pyright -- on every
+# container start, ~60s wasted and dev tooling installed into a runtime
+# image). Same PYTHONPATH pattern minimax-video-factory's Dockerfile.python
+# already uses for the same reason.
+ENV PYTHONPATH=/app/src
 
 # Install OS packages we need for building and runtime
 # ffmpeg: faster-whisper/av need it to decode whatever container format

@@ -1,8 +1,13 @@
+networks:
+  insta-kb-net:
+    name: insta-kb-net
+
 services:
   python:
     build:
       context: ../
       dockerfile: ./.devcontainer/Dockerfile
+    networks: [insta-kb-net]
     volumes:
       # Only source code is bind-mounted -- the venv lives entirely inside
       # the image (see Dockerfile). A venv bind-mounted from the host used
@@ -11,21 +16,19 @@ services:
       # pydantic-core...) don't run against a different base image, and the
       # venv's embedded interpreter path only resolves on the host anyway.
       - ../:/app
-    ports:
-      # 127.0.0.1 on purpose, same as postgres/rabbitmq below: the REST API
-      # has no authentication (see docs/HANDOFF.md security review) --
-      # exposing it on all interfaces would put kb_export's write and
-      # ig_worker_start/stop's control actions reachable from the network.
-      - "127.0.0.1:${API_PORT:-8084}:8000"
-      - "127.0.0.1:${MCP_PORT:-8849}:8000"
     user: appuser
     env_file:
       - ../.env
     command: sleep infinity
+    # Debug shell only now -- api/worker/mcp below are the real services.
+    # No ports here: the python service never listened usefully on them
+    # anyway (both host ports forwarded to the same internal :8000, before
+    # any of the three real services existed to answer on it).
 
   postgres:
     image: pgvector/pgvector:pg16
     restart: unless-stopped
+    networks: [insta-kb-net]
     env_file:
       - ../.env
     environment:
@@ -40,6 +43,7 @@ services:
   rabbitmq:
     image: rabbitmq:3-management
     restart: unless-stopped
+    networks: [insta-kb-net]
     # Nome de nó fixo: sem isso, cada container novo ganha hostname aleatório
     # (o id curto do container) e o RabbitMQ cria um node Mnesia NOVO e VAZIO
     # a cada recreate -- os dados ficam presos no node antigo, intactos mas
@@ -56,3 +60,84 @@ services:
       - "127.0.0.1:${RABBITMQ_MANAGEMENT_PORT:-15673}:15672"
     volumes:
       - ${RABBITMQ_DATA_DIR:-../.rabbitmq}:/var/lib/rabbitmq
+
+  # api/worker/mcp all talk to Ollama on the HOST (not a container -- the
+  # host already runs the one Ollama instance this machine has GPU budget
+  # for, shared with minimax-video-factory's renders; see CLAUDE.md "O
+  # ig-worker disputa a MESMA GPU"). `host.docker.internal` + host-gateway
+  # is the standard way a Linux container reaches a host-bound port without
+  # `network_mode: host` (tested 2026-10-07: a plain container resolves it
+  # and reaches :11434 fine). The old .env comment ("containers can't reach
+  # localhost, worker must run on host") was stale -- confirmed with the
+  # user this session; DATABASE_URL/RABBITMQ_URL below are full URLs, not
+  # just *_HOST, because Settings (src/core/settings/config.py) builds those
+  # fields once from literal defaults at class-definition time -- setting
+  # only POSTGRES_HOST/RABBITMQ_HOST env vars would silently not reach them.
+  api:
+    build:
+      context: ../
+      dockerfile: ./.devcontainer/Dockerfile
+    networks: [insta-kb-net]
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    env_file:
+      - ../.env
+    environment:
+      OLLAMA_URL: http://host.docker.internal:11434
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-kb}:${POSTGRES_PASSWORD:-kb}@postgres:5432/${POSTGRES_DB:-knowledge}
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:-guest}:${RABBITMQ_PASS:-guest}@rabbitmq:5672/
+    command: /opt/venv/bin/uvicorn api.main:app --host 0.0.0.0 --port 8000
+    ports:
+      # No auth on the REST API (see docs/HANDOFF.md security review) --
+      # 127.0.0.1 only, same reasoning as postgres/rabbitmq above.
+      - "127.0.0.1:${API_PORT:-8084}:8000"
+    depends_on: [postgres, rabbitmq]
+    volumes: [../:/app]
+    user: appuser
+
+  worker:
+    build:
+      context: ../
+      dockerfile: ./.devcontainer/Dockerfile
+    networks: [insta-kb-net]
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    env_file:
+      - ../.env
+    environment:
+      OLLAMA_URL: http://host.docker.internal:11434
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-kb}:${POSTGRES_PASSWORD:-kb}@postgres:5432/${POSTGRES_DB:-knowledge}
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:-guest}:${RABBITMQ_PASS:-guest}@rabbitmq:5672/
+    command: /opt/venv/bin/python -m workers.ig_worker
+    depends_on: [postgres, rabbitmq]
+    volumes: [../:/app]
+    user: appuser
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  mcp:
+    build:
+      context: ../
+      dockerfile: ./.devcontainer/Dockerfile
+    networks: [insta-kb-net]
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    env_file:
+      - ../.env
+    environment:
+      OLLAMA_URL: http://host.docker.internal:11434
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-kb}:${POSTGRES_PASSWORD:-kb}@postgres:5432/${POSTGRES_DB:-knowledge}
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:-guest}:${RABBITMQ_PASS:-guest}@rabbitmq:5672/
+      MCP_TRANSPORT: streamable-http
+      MCP_PORT: "8849"
+    command: /opt/venv/bin/python -m mcp_server.server
+    ports:
+      - "127.0.0.1:${MCP_PORT:-8849}:8849"
+    depends_on: [postgres, rabbitmq]
+    volumes: [../:/app]
+    user: appuser
