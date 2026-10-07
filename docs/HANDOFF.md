@@ -10,6 +10,29 @@ Plano original desta migração (todas as fases e decisões):
 Ver também `minimax-video-factory/docs/HANDOFF.md`, seção "EM ANDAMENTO
 2026-10-06", para o lado que ainda falta limpar no projeto de origem.
 
+## 🔄 EM ANDAMENTO 2026-10-07: atualização completa (deps/Docker/MCPs/testes)
+
+Plano mestre: `~/.claude/plans/vamos-atualizar-a-lista-groovy-sun.md` — cópias
+versionadas em `docs/PLANO_ATUALIZACAO.md` (este repo) e no minimax-video-factory.
+**Branch: `update/deps-2026-10`** (PR no fim). Execução inline, 10 tasks
+(0-9), status da tabela no próprio plano.
+
+| Task | Descrição | Status | Evidência |
+|---|---|---|---|
+| 0 | Commits pendentes + baseline + cópias do plano | ✅ | baseline `168 passed` (+9 no minimax); commits `e2095eb` (fail-soft+export), `9aaa257` (plano) |
+| 1 | Deps insta_kb | ⏳ | |
+| 2 | Deps minimax | ⏳ | |
+| 3 | ComfyUI v0.39.1 + nodes + pesos | ⏳ | |
+| 4 | Docker insta_kb (Parte B) | ⏳ | |
+| 5 | MCPs do OpenCode | ⏳ | |
+| 6 | Matriz de testes | ⏳ | |
+| 7 | Fila do insta_kb (329 msgs) | ⏳ | |
+| 8 | Documentação | ⏳ | |
+| 9 | Diagramas | ⏳ | |
+
+Regra de GPU durante toda a execução: 1 job (render/transcrição/Ollama) por
+vez; `av==18.1.0` fixo nos 2 repos; nenhum download de peso sem OK.
+
 ## ✅ Commit real em 2026-10-06: `a773f2c` em `migrate/instagram-kb-from-video-factory`
 
 Primeiro commit de código de verdade do projeto (antes só tinha `app/main.py`

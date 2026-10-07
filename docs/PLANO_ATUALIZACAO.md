@@ -116,7 +116,7 @@ mesmos bind mounts.
 
 | Task | Descrição | Status | Evidência / HANDOFF |
 |---|---|---|---|
-| 0 | Commits pendentes + baseline | ⏳ | |
+| 0 | Commits pendentes + baseline | ✅ | branch `update/deps-2026-10` nos 2 repos; baseline 168+9; commits insta_kb `e2095eb`+`9aaa257`, minimax `44b6406`+`4b34bd2`+`376e6ae` |
 | 1 | Deps insta_kb | ⏳ | |
 | 2 | Deps minimax | ⏳ | |
 | 3 | ComfyUI + nodes + pesos | ⏳ | |
