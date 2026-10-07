@@ -545,3 +545,37 @@ pydantic, ctranslate2"'` funciona sem precisar de `uv run`; `.venv` do
 host comparado antes/depois do rebuild, idêntico; `uv run pytest -q` no
 host: 169 passed (mesmo baseline). Devcontainer interativo (VS Code) ainda
 não reaberto pelo usuário para confirmação final — pendência.
+
+---
+
+## 2026-10-07 — Mutex de GPU compartilhado com minimax-video-factory
+
+Mesmo achado documentado em detalhe no HANDOFF do minimax-video-factory
+("Mutex de GPU compartilhado com insta_kb") — este é o espelho do lado
+insta_kb, resumido:
+
+- `infra/gpu_lock/gpu_lock.py`: módulo IDÊNTICO (duplicado, não
+  importado) ao `minimax_mcp/gpu_lock.py` do outro repo. `fcntl.flock`
+  sobre `GPU_LOCK_DIR/gpu.lock` (default `~/.gpu-lock`, bind-mounted em
+  `/var/lib/gpu-lock` nos serviços `api`/`worker`/`mcp`).
+- `_default_transcribe` (ig_worker) envolve a chamada ao Whisper com
+  `held(f"ig-worker transcribe {filepath}", timeout=1800)`. Falha soft
+  (`{"ok": false, "error": ...}`) se não conseguir o lock — não derruba
+  o worker nem perde a mensagem (vai pro fluxo normal de retry/DLQ).
+- `GET /gpu/status`, `POST /gpu/acquire`, `POST /gpu/release` na API REST
+  (porta 8084) — mesma forma, implementação independente do lado minimax
+  (que usa `@mcp.custom_route` do FastMCP em vez de FastAPI).
+
+**Validado nesta sessão, ponta a ponta de verdade:** `POST :8848/gpu/acquire`
+(minimax, processo totalmente separado) → `GET :8084/gpu/status` (aqui)
+reportou `held=true` com o holder certo → release → `free=true` de novo.
+Também validado com carga real: `GET /gpu/status` refletiu o lock
+**enquanto o worker transcrevia um post de verdade da fila** (`holder`
+= caminho do arquivo .mp4 sendo processado). 182 testes (+12 novos)
+passed; ruff/pyright/bandit limpos. Commit `a2d391f`. Commit irmão no
+minimax-video-factory: `c92ffee` (review disparado, resultado pendente
+no momento deste HANDOFF).
+
+⚠️ **Limitação aceita, registrada dos dois lados:** sem detector de lock
+órfão — se um processo morrer sem liberar (crash, `kill -9`), o lock
+fica preso até alguém apagar `~/.gpu-lock/gpu.lock`/`gpu.holder` à mão.
