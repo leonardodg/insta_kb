@@ -1,6 +1,8 @@
 """Unit tests for mcp_server.server tool functions. RabbitMQ/Postgres/
 instagrapi/Ollama are never touched: `ig_sync`, `ig_queue`, `db` and
-`knowledge` are monkeypatched with fakes/mocks at the module level.
+`knowledge` are monkeypatched with fakes/mocks at the module level -- for
+the control-plane tools (queue status / worker start-stop / progress) the
+patching targets live in `services.ig_control`, where the logic now is.
 
 Each `@mcp.tool()`-decorated function stays a plain Python function in the
 module namespace (fastmcp does not rewrap it there), so these tests call it
@@ -19,6 +21,7 @@ from typing import Any
 import pytest
 
 from mcp_server import server
+from services import ig_control
 
 # Expected values asserted below, named so ruff's PLR2004 does not read them
 # as unexplained magic numbers.
@@ -167,8 +170,8 @@ def test_ig_sync_saved_catches_exceptions(monkeypatch: pytest.MonkeyPatch):
 def test_ig_queue_status_happy_path(monkeypatch: pytest.MonkeyPatch):
     fake_channel = FakeChannel()
     fake_conn = FakeConnection(fake_channel)
-    monkeypatch.setattr(server.ig_queue, "connect", lambda: fake_conn)
-    monkeypatch.setattr(server.ig_queue, "close", _noop_close)
+    monkeypatch.setattr(ig_control.ig_queue, "connect", lambda: fake_conn)
+    monkeypatch.setattr(ig_control.ig_queue, "close", _noop_close)
 
     result = server.ig_queue_status()
     assert result["ok"] is True
@@ -180,23 +183,23 @@ def test_ig_queue_status_happy_path(monkeypatch: pytest.MonkeyPatch):
 def test_ig_worker_start_publishes_start_command(monkeypatch: pytest.MonkeyPatch):
     fake_channel = FakeChannel()
     fake_conn = FakeConnection(fake_channel)
-    monkeypatch.setattr(server.ig_queue, "connect", lambda: fake_conn)
-    monkeypatch.setattr(server.ig_queue, "declare", _noop_declare)
-    monkeypatch.setattr(server.ig_queue, "close", _noop_close)
+    monkeypatch.setattr(ig_control.ig_queue, "connect", lambda: fake_conn)
+    monkeypatch.setattr(ig_control.ig_queue, "declare", _noop_declare)
+    monkeypatch.setattr(ig_control.ig_queue, "close", _noop_close)
 
     result = server.ig_worker_start()
     assert result == {"ok": True, "command": "start"}
     assert len(fake_channel.published) == 1
     assert "start" in fake_channel.published[0]["body"]
-    assert fake_channel.published[0]["routing_key"] == server.ig_queue.CONTROL_QUEUE
+    assert fake_channel.published[0]["routing_key"] == ig_control.ig_queue.CONTROL_QUEUE
 
 
 def test_ig_worker_stop_publishes_stop_command(monkeypatch: pytest.MonkeyPatch):
     fake_channel = FakeChannel()
     fake_conn = FakeConnection(fake_channel)
-    monkeypatch.setattr(server.ig_queue, "connect", lambda: fake_conn)
-    monkeypatch.setattr(server.ig_queue, "declare", _noop_declare)
-    monkeypatch.setattr(server.ig_queue, "close", _noop_close)
+    monkeypatch.setattr(ig_control.ig_queue, "connect", lambda: fake_conn)
+    monkeypatch.setattr(ig_control.ig_queue, "declare", _noop_declare)
+    monkeypatch.setattr(ig_control.ig_queue, "close", _noop_close)
 
     result = server.ig_worker_stop()
     assert result == {"ok": True, "command": "stop"}
@@ -211,18 +214,18 @@ def test_ig_get_progress_reads_state_file(
         {"ig_pk": "2", "status": "done"},
     ]
     state_file.write_text(json.dumps(done_entries), encoding="utf-8")
-    monkeypatch.setattr(server.settings, "IG_STATE_FILE", str(state_file))
+    monkeypatch.setattr(ig_control.settings, "IG_STATE_FILE", str(state_file))
 
     class FakeSession:
         def close(self) -> None:
             pass
 
-    monkeypatch.setattr(server.db, "get_session", FakeSession)
+    monkeypatch.setattr(ig_control.db, "get_session", FakeSession)
 
     def _list_ig_pks(session: Any) -> set[str]:
         return {"1", "2", "3"}
 
-    monkeypatch.setattr(server.db, "list_ig_pks", _list_ig_pks)
+    monkeypatch.setattr(ig_control.db, "list_ig_pks", _list_ig_pks)
 
     result = server.ig_get_progress(last_n=1)
     assert result["ok"] is True
@@ -234,18 +237,18 @@ def test_ig_get_progress_missing_state_file_returns_empty(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
     missing_state_file = tmp_path / "missing.json"
-    monkeypatch.setattr(server.settings, "IG_STATE_FILE", str(missing_state_file))
+    monkeypatch.setattr(ig_control.settings, "IG_STATE_FILE", str(missing_state_file))
 
     class FakeSession:
         def close(self) -> None:
             pass
 
-    monkeypatch.setattr(server.db, "get_session", FakeSession)
+    monkeypatch.setattr(ig_control.db, "get_session", FakeSession)
 
     def _list_ig_pks(session: Any) -> set[str]:
         return set()
 
-    monkeypatch.setattr(server.db, "list_ig_pks", _list_ig_pks)
+    monkeypatch.setattr(ig_control.db, "list_ig_pks", _list_ig_pks)
 
     result = server.ig_get_progress(last_n=10)
     assert result == {"ok": True, "last": [], "documents_with_ig_pk": 0}

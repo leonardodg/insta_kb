@@ -1,8 +1,9 @@
 """REST API for the Insta Knowledge Base.
 
-Every endpoint here is a thin wrapper that calls the exact same function the
-equivalent MCP tool calls (`mcp_server.server.*` / `mcp_server.knowledge.*`)
--- no business logic is duplicated between the MCP and REST surfaces. See
+Every endpoint here is a thin wrapper that calls the exact same application
+function the equivalent MCP tool calls (`services.ig_control.*` /
+`core.knowledge.*`) -- no business logic is duplicated between the MCP and
+REST surfaces, and neither adapter imports the other (SOLID audit #2). See
 `src/mcp_server/server.py` for the MCP tool docstrings, which describe the
 underlying behaviour in full; this module's docstrings focus on the REST
 contract (verb, params, response shape) for the auto-generated OpenAPI docs
@@ -23,9 +24,10 @@ from typing import Any
 from fastapi import FastAPI, Query
 from pydantic import BaseModel, Field
 
+from core.knowledge import knowledge
 from core.settings.config import settings
 from infra import gpu_lock
-from mcp_server import server as mcp_server
+from services import ig_control
 
 app = FastAPI(
     root_path=settings.PROJECT_ROOT,
@@ -113,7 +115,7 @@ async def ig_queue_status_endpoint() -> dict[str, Any]:
     """Mirrors the `ig_queue_status` MCP tool: how many messages are ready
     in `ig.saved`, how many are dead-lettered in `ig.saved.dead`, and how
     many consumers (the ig-worker daemon) are currently attached."""
-    return mcp_server.ig_queue_status()
+    return ig_control.queue_status()
 
 
 @app.get(
@@ -127,7 +129,7 @@ async def ig_progress_endpoint(
     """Mirrors the `ig_get_progress` MCP tool: reads the worker's state
     file plus a count of documents that have an `ig_pk` (i.e. came from
     Instagram, as opposed to manual/markdown ingestion)."""
-    return mcp_server.ig_get_progress(last_n=last_n)
+    return ig_control.get_progress(last_n=last_n)
 
 
 @app.post(
@@ -139,7 +141,7 @@ async def ig_worker_start_endpoint() -> dict[str, Any]:
     """Publishes a 'start' control message. Idempotent -- safe to call when
     the worker is already running. Lightweight signal, unlike
     `ig_sync_saved` (not exposed here), so it's safe as a REST action."""
-    return mcp_server.ig_worker_start()
+    return ig_control.publish_control_command("start")
 
 
 @app.post(
@@ -150,7 +152,7 @@ async def ig_worker_start_endpoint() -> dict[str, Any]:
 async def ig_worker_stop_endpoint() -> dict[str, Any]:
     """Publishes a 'stop' control message. Use before a GPU-heavy render
     on a shared card, same reasoning as the CLAUDE.md GPU-contention rule."""
-    return mcp_server.ig_worker_stop()
+    return ig_control.publish_control_command("stop")
 
 
 # =============================================================================
@@ -169,7 +171,7 @@ async def knowledge_search_endpoint(
 ) -> dict[str, Any]:
     """Read-only. Returns the top-k most relevant documents (hybrid
     keyword+embedding ranking, see `infra.db.repository.search_documents`)."""
-    return mcp_server.knowledge.search(query, top_k=top_k)
+    return knowledge.search(query, top_k=top_k)
 
 
 @app.post(
@@ -183,7 +185,7 @@ async def knowledge_ask_endpoint(
 ) -> dict[str, Any]:
     """POST (not GET) because it makes an LLM call, not because it mutates
     any state -- same read-only contract as `knowledge_search` underneath."""
-    return mcp_server.knowledge.ask(query, top_k=top_k)
+    return knowledge.ask(query, top_k=top_k)
 
 
 @app.get(
@@ -213,7 +215,7 @@ async def list_documents_endpoint(
     client page through the entire filtered set, unlike
     `GET /knowledge/export/search`'s "latest N" mode, which caps at its
     `limit` and reports no total."""
-    return mcp_server.knowledge.list_documents(
+    return knowledge.list_documents(
         limit=limit, offset=offset, platform=platform, doc_type=doc_type, tag=tag
     )
 
@@ -233,7 +235,7 @@ async def kb_export_search_endpoint(
     """Read-only; never writes a file. Confirm the list here, then call
     `POST /knowledge/export` with the same `ids` to actually write the
     `.md` files."""
-    return mcp_server.knowledge.export_search(query=query, ids=ids, limit=limit)
+    return knowledge.export_search(query=query, ids=ids, limit=limit)
 
 
 # =============================================================================
@@ -325,7 +327,7 @@ async def kb_export_endpoint(
     check each entry's `ok`/`skipped`/`error` in the response, the whole
     batch is not rolled back by one failure (same contract as the
     `kb_export` MCP tool / `knowledge.export_documents`)."""
-    return mcp_server.kb_export(ids=ids, output_dir=output_dir)
+    return knowledge.export_documents(ids=ids, output_dir=output_dir)
 
 
 # if __name__ == "__main__":
