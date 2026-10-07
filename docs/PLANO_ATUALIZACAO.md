@@ -127,7 +127,7 @@ mesmos bind mounts.
 | 0 | Commits pendentes + baseline | ✅ | branch `update/deps-2026-10` nos 2 repos; baseline 168+9; commits insta_kb `e2095eb`+`9aaa257`, minimax `44b6406`+`4b34bd2`+`376e6ae` |
 | 1 | Deps insta_kb | ✅ | `av==18.1.0`+`instagrapi>=3.0.20`+`fastmcp>=4.0.11`+`fastapi[standard]>=0.142.2`; lock uvicorn 0.54.0/ruff 0.16.10/pyright 1.1.414; 168 passed + smoke decode OK; review aplicado; `58e8093` |
 | 2 | Deps minimax | ✅ | `fastmcp>=4.0.11`+`av==18.1.0` (pin novo)+`requires-python>=3.11`; lock yt-dlp 2026.8.19/pydantic 2.13.5/ruff 0.16.10/pylint 4.1.2; review: sem breaking no server, fixes pós-review; 9/9+privacy+ruff ✅; commits `715216e`+`83c8454` |
-| 3 | ComfyUI + nodes + pesos | ⏳ | |
+| 3 | ComfyUI + nodes + pesos | ✅ | v0.39.1 + nodes já atualizados + 3 pesos novos (turbo loras fl2v/ref2v + vae int8_convrot, 6,7 GB); render turbo validado (seed 42, 512x320, 5s, vídeo+áudio estéreo OK); commit `ae944c1` |
 | 4 | Docker insta_kb (Parte B) | ⏳ | |
 | 5 | MCPs do OpenCode | ⏳ | |
 | 6 | Matriz de testes | ⏳ | |

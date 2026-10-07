@@ -43,9 +43,10 @@
   // postCreateCommand executes as the container user (not necessarily root).
   "postCreateCommand": "echo 'Dev container ready -OK'",
 
-  // Ensure the virtualenv created at /opt/venv is available in the container PATH
+  // Ensure the virtualenv created at /opt/venv (image-local, never bind-mounted
+  // -- see Dockerfile) is available in the container PATH.
   "containerEnv": {
-    "VIRTUAL_ENV": "/app/.venv",
+    "VIRTUAL_ENV": "/opt/venv",
     "HISTFILE": "/tmp/appuser.bash_history"
   },
 
@@ -79,7 +80,8 @@
       // Add custom VS Code settings.
       "settings": {
         "terminal.integrated.shell.linux": "/bin/bash",
-        "terminal.integrated.defaultProfile.linux": "bash"
+        "terminal.integrated.defaultProfile.linux": "bash",
+        "python.defaultInterpreterPath": "/opt/venv/bin/python"
       }
     }
   }

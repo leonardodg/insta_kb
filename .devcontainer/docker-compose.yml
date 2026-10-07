@@ -4,6 +4,12 @@ services:
       context: ../
       dockerfile: ./.devcontainer/Dockerfile
     volumes:
+      # Only source code is bind-mounted -- the venv lives entirely inside
+      # the image (see Dockerfile). A venv bind-mounted from the host used
+      # to live at /app/.venv; that broke two ways (2026-10-07, see
+      # docs/HANDOFF.md): compiled host binaries (psycopg, av, ctranslate2,
+      # pydantic-core...) don't run against a different base image, and the
+      # venv's embedded interpreter path only resolves on the host anyway.
       - ../:/app
     ports:
       # 127.0.0.1 on purpose, same as postgres/rabbitmq below: the REST API
