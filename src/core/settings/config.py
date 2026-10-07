@@ -20,10 +20,13 @@ class Settings(BaseSettings):
     APP_ENV: str = "development"
 
     MCP_TRANSPORT: str = "stdio"
-    MCP_HOST: str = "0.0.0.0"
+    # 0.0.0.0 on purpose: binds the container's interface, not the host's --
+    # the port is only reachable from outside via the compose/devcontainer
+    # port mapping, which already scopes it to 127.0.0.1 on the host side.
+    MCP_HOST: str = "0.0.0.0"  # nosec B104
     MCP_PORT: int = 8099
 
-    API_HOST: str = "0.0.0.0"
+    API_HOST: str = "0.0.0.0"  # nosec B104 -- same reasoning as MCP_HOST above
     API_PORT: int = 8085
 
     POSTGRES_SCHEMA: str = "postgresql+psycopg"
