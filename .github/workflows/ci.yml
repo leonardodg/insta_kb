@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main, dev]
+  push:
+    branches: [main, dev]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}-${{ github.workflow }}
+  cancel-in-progress: true
+
+jobs:
+  # No GPU/self-hosted runner needed here, unlike minimax-video-factory:
+  # the test suite mocks every external service (Postgres, RabbitMQ, Ollama,
+  # faster-whisper) at the boundary -- see tests/test_*.py. This is exactly
+  # the same set of checks `pre-commit` runs locally before a commit lands.
+  quality:
+    name: Lint, Types, Security, Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --all-groups
+
+      - name: ruff check
+        run: uv run ruff check src/ scripts/ tests/
+
+      - name: ruff format --check
+        run: uv run ruff format --check src/ scripts/ tests/
+
+      - name: pyright (strict)
+        run: uv run pyright src/ tests/ scripts/
+
+      - name: bandit
+        run: uv run bandit -c pyproject.toml -r .
+
+      - name: pip-audit
+        run: uv run --frozen --no-sync pip-audit --local --skip-editable
+
+      - name: pytest
+        run: uv run pytest -q
