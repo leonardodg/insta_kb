@@ -437,3 +437,32 @@ vieram de verificação real, não de leitura de relatório).
 - API REST: paginação por página normal (`limit`/`offset`), separável por
   `platform`/`doc_type`/`tag` — pedido explícito do usuário ("Paginado
   separados por categorias, tags estas coisas").
+
+## 2026-10-07 — revalidação pós-paralelo (av==18.1.0, teste faltante, database.db*)
+
+Sessão retomada depois do usuário ter iniciado, em paralelo (outro terminal,
+mesma working directory, branch `update/deps-2026-10`), a atualização de
+deps documentada em `docs/PLANO_ATUALIZACAO.md`. Reconciliação feita:
+
+- **`av==18.1.0`** (trocado de `15.1.0` pela atualização paralela) verificado
+  de novo, independentemente: `av.open(..., metadata_errors="ignore")` ainda
+  aceita o parâmetro (erro foi `InvalidDataError` de arquivo inválido, não
+  `TypeError`), e uma transcrição real via `faster_whisper` (CPU, para não
+  disputar GPU com o render do video-factory em andamento) terminou sem erro.
+  Não reintroduz o bug que a mudança para 15.1.0 tinha corrigido.
+- Faltava o teste `test_search_db_failure_returns_ok_false_not_raise` (cobre
+  `search()` no fail-soft do commit `e2095eb`) — commitado agora
+  (`766384a`, na branch `update/deps-2026-10`, que já era a branch
+  checked-out).
+- `database.db`/`-shm`/`-wal` (sqlite vazio, sem schema, não referenciado em
+  código) — adicionados ao `.gitignore` (regra já estava em
+  `docs/PLANO_ATUALIZACAO.md`: "nunca é commitado", mas o `.gitignore` não
+  cumpria). Arquivos continuam no disco — remoção bloqueada pelo classificador
+  de permissões desta sessão; não são segredo nem dado real, é lixo de alguma
+  conexão sqlite default.
+- Suíte completa no HEAD atual (`766384a`): `pytest` 169→170 passed, `ruff`/
+  `pyright`/`bandit`/`pip-audit` limpos.
+
+**Não toquei** no restante do WIP de `update/deps-2026-10` (bump fastmcp,
+instagrapi, fastapi, lock --upgrade) — é o plano do usuário em andamento,
+fora do escopo desta reconciliação.
