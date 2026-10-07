@@ -131,9 +131,9 @@ mesmos bind mounts.
 | 4 | Docker insta_kb (Parte B) | ✅ (Ollama corrigido) | venv isolado `/opt/venv`; rede `insta-kb-net` + api/worker/mcp; Ollama CONTAINERIZADO na rede (host.docker.internal não alcançava `insta-kb-net` -- firewall; corrigido depois de causar um incidente real); `.mcp.json`→HTTP; mutex de GPU compartilhado com minimax; commits `bf824e5`+`02140f1`+`984e03c`+posteriores |
 | 5 | MCPs do OpenCode | 🔶 parcial | inventário feito; `insta-kb` global trocado pra HTTP; pendente: reload do OpenCode (ação do usuário) pra Steps 4-5 |
 | 6 | Matriz de testes | 🔶 parcial | Steps 1/2/4 feitos; Step 3 bloqueado (reload pendente); Step 5 feito com incidente real documentado (ver HANDOFF) |
-| 7 | Fila do insta_kb | ✅ (parada proposital) | drenagem parcial 329→322 ready, 0 dead, 7 ingests e2e (docs 3713→3719), 0 errors; parada graciosa por decisão do usuário (retomável); commit `473e773` (insta_kb) |
-| 8 | Documentação | ⏳ | |
-| 9 | Diagramas | ⏳ | |
+| 7 | Fila do insta_kb | ✅ (em andamento) | 322→199 ready processados após fix do Ollama containerizado (queue real drenando sozinha, worker rodando); 0 dead observado; retomável/pausável via ig_worker_start/stop |
+| 8 | Documentação | ✅ | site MkDocs nos 2 repos (mkdocs.yml + mkdocstrings); README/HANDOFF atualizados; commits `53a92ae` (insta_kb) + `fe4fc82` (minimax) |
+| 9 | Diagramas | ✅ | docs/ARQUITETURA.md com 3 diagramas Mermaid nos 2 repos; feito junto com a Task 8 pela mesma sessão paralela |
 | 10 | Auditoria SOLID (avaliação) | ✅ | relatórios `docs/SOLID_AUDIT.md` ×2 (314 l. insta_kb / 231 l. minimax, só avaliação); veredito **ciclo futura** nos 2; 1 bug-crítico `state=rendering` (minimax) + backlog 12 itens (insta_kb); commits `02f760a`+`76c60a6` |
 
 ---
