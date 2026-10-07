@@ -681,5 +681,51 @@ Escopo aprovado: executar o backlog §5 do `docs/SOLID_AUDIT.md` com TDD
 `ruff format`, `pyright` (0 erros), `bandit`, `pip-audit` — todos verdes
 nos pre-commit hooks.
 
-**Próximos:** #3 fatiar `ig_worker.py` (M) · #4 fatiar `knowledge.py` (M)
-· #5 TypedDict/Protocol (M) · code review · testes MCP+vídeo · docs.
+**Próximos:** ver seção abaixo (itens #3–#5 concluídos).
+
+
+## 2026-10-07 — backlog SOLID: itens #3, #4 e #5 concluídos + code review
+
+- **#3 (`9315f33`)** `ig_worker.py` (1031 l.) fatiado em
+  `workers/{text,media_download,screen,consumer}.py` + orquestração no
+  `ig_worker.py`; `__all__`/import público preservado (Nada quebrado em
+  api/mcp/scripts). +6 testes de contrato → **197 passed**.
+- **#4 (`35499a5`)** `knowledge.py` (732 l.) fatiado em
+  `core/knowledge/{ingest,query,export}.py` + fachada `knowledge`
+  (inclui `settings` no `__all__`, regressão que o review pegaria). Teste
+  de `ask` passa a patchar `query.search` (dono real). +5 contrato →
+  **202 passed**.
+- **#5 (`1010bcf` + follow-up `e8fe940`)** `core/contracts.py`:
+  TypedDicts (`ProcessResult`, `DocBuilt`/`DocBuiltErr`,
+  `DocumentDraft`), Protocols (`Embedder`, pipeline de mídia,
+  `Ingester` com keywords explícitas), `save_document` com
+  `DocumentDraft` (16→4 params). `PLR0913` **reabilitado** no pyproject
+  com 6 `# noqa` documentados. Follow-up do review: `OkResult` morto →
+  **`ErrResult` (`ok: Literal[False]`) compartilhado + pares Ok/Err por
+  fronteira** (`SearchOk`, `AskOk`, `ReindexOk`, `QueueStatusOk`,
+  `ControlCommandOk`, `ProgressOk`, `ExportSearchOk`, `ListDocumentsOk`,
+  `ExportDocumentsOk`) propagados até `api/main.py` e
+  `mcp_server/server.py` — TypedDict é fechado, então não existe "Ok
+  genérico com extras"; a validação de resposta nova pegou 3 fixtures de
+  teste com shape incompleto (`query`/`sources`/`total`). Escopo F4
+  restante (registrado): `ingest`/`llm`/scripts ainda `dict[str, Any]`.
+  → **206 passed**; hooks (ruff/pyright/bandit/pip-audit) verdes.
+
+**Code review (2 subagentes, template `code-reviewer.md`):**
+
+- insta_kb `fd99996..1010bcf` → **"With fixes"**. Importante: (i)
+  `OkResult` morto → **corrigido em `e8fe940`**; (ii) este HANDOFF com
+  #3–#5 desatualizado → **corrigido nesta seção**. Nenhum bug de
+  runtime; AST/`__all__`/imports verificados byte a byte.
+- minimax `631bbaf..7fb3c21` → **"Yes, but fast-follow"**. Importante:
+  erros de **transporte** (`httpx`/`TimeoutError`/`OSError`) no poll de
+  `/history`/`/prompt` escapam de `ComfyUITimeout` → `core.py` solta o
+  lock de GPU com payload sem `prompt_id`/`timed_out`. **Pendente
+  (próximo item).** Menores: poll triplo de `/history`, docstring,
+  `COMMANDS.md` stale 240s, reset de teste.
+
+**Próximos:** fast-follow minimax (guard de transporte no `_poll`) ·
+refazer testes MCP · docs+diagramas ×2 · page de docs do insta_kb +
+link do README · sync do plano (3 cópias md5) + HANDOFF · suítes finais
++ commits/PR · **por último (pedido do usuário): testes reais de criação
+de vídeo**.
