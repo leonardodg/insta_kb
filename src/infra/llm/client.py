@@ -15,6 +15,7 @@ import json
 import logging
 import re
 import unicodedata
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -289,6 +290,15 @@ def _openai_compatible_generate(prompt: str, model: str, *, force_json: bool) ->
     return resp.json()["choices"][0]["message"]["content"]
 
 
+# SOLID audit #1 (F3): o ÚNICO ponto que decide qual gerador cada provedor
+# usa. Adicionar um provedor é 1 linha aqui — os dois dispatchers
+# (_generate_raw_with_retries e chat) resolvem por este dicionário.
+PROVIDERS: dict[str, Callable[..., str]] = {
+    "ollama": _ollama_generate,
+    "openai-compatible": _openai_compatible_generate,
+}
+
+
 _BLOCO_RE = re.compile(r"```([^\n]*)\n(.*?)```", re.DOTALL)
 _INLINE_RE = re.compile(r"`([^`\n]+)`")
 
@@ -427,19 +437,18 @@ def _generate_raw_with_retries(
     Returns {"ok": True, "parsed": ..., "raw": ...} or
     {"ok": False, "error": ..., "raw": raw-response-so-far}.
     """
+    generator = PROVIDERS.get(provider)
+    if generator is None:
+        return {
+            "ok": False,
+            "error": f"Unknown LLM_PROVIDER: {provider}",
+            "raw": "",
+        }
+
     raw = ""
     parsed: dict[str, Any] | None = None
     for tentativa in (1, 2):
-        if provider == "ollama":
-            raw = _ollama_generate(prompt, model, force_json=True)
-        elif provider == "openai-compatible":
-            raw = _openai_compatible_generate(prompt, model, force_json=True)
-        else:
-            return {
-                "ok": False,
-                "error": f"Unknown LLM_PROVIDER: {provider}",
-                "raw": raw,
-            }
+        raw = generator(prompt, model, force_json=True)
         try:
             candidato = parse_llm_json(raw)
         except Exception as exc:
@@ -591,11 +600,10 @@ def chat(prompt: str, *, provider: str | None = None, model: str | None = None) 
     """Free-text completion (no forced JSON) — used for RAG answers."""
     provider = provider or LLM_PROVIDER
     model = model or LLM_MODEL
-    if provider == "ollama":
-        return _ollama_generate(prompt, model, force_json=False)
-    if provider == "openai-compatible":
-        return _openai_compatible_generate(prompt, model, force_json=False)
-    raise RuntimeError(f"Unknown LLM_PROVIDER: {provider}")
+    generator = PROVIDERS.get(provider)
+    if generator is None:
+        raise RuntimeError(f"Unknown LLM_PROVIDER: {provider}")
+    return generator(prompt, model, force_json=False)
 
 
 VISION_MODEL = settings.OLLAMA_VISION_MODEL
