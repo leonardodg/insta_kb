@@ -158,3 +158,56 @@ def test_close_swallows_errors():
     # pika.BlockingConnection, not a real one.
     queue.close(cast(pika.BlockingConnection, BrokenConnection()))
     queue.close(None)
+
+
+def _params_used(monkeypatch: Any, url: str) -> pika.URLParameters:
+    """Swaps pika.BlockingConnection for a spy and returns the URLParameters
+    connect() built, without opening a real connection."""
+    monkeypatch.setattr(queue, "RABBITMQ_URL", url)
+    captured: dict[str, pika.URLParameters] = {}
+
+    def spy(params: pika.URLParameters) -> None:
+        captured["params"] = params
+        raise RuntimeError("not actually connecting")
+
+    monkeypatch.setattr(pika, "BlockingConnection", spy)
+    try:
+        queue.connect()
+    except RuntimeError:
+        pass
+    return captured["params"]
+
+
+def test_connect_defaults_to_no_heartbeat(monkeypatch: Any):
+    # A BlockingConnection only answers a heartbeat when control returns to
+    # its event loop -- and this project's work (enumerating a big Instagram
+    # collection, transcribing, vision-model reads) blocks far longer than
+    # pika's ~60s default negotiation. heartbeat=0 is what RabbitMQ's own
+    # docs recommend for a long-task consumer; dead-connection detection
+    # falls back to TCP keepalive instead.
+    params = _params_used(monkeypatch, "amqp://guest:guest@localhost:5672/")
+    assert params.heartbeat == 0
+
+
+def test_connect_sets_blocked_connection_timeout(monkeypatch: Any):
+    # Without this, a broker under memory pressure (connection.blocked)
+    # hangs the publisher forever instead of raising.
+    params = _params_used(monkeypatch, "amqp://guest:guest@localhost:5672/")
+    assert params.blocked_connection_timeout == queue.BLOCKED_TIMEOUT
+
+
+EXPECTED_CUSTOM_HEARTBEAT = 30
+DEFAULT_AMQP_PORT = 5672
+
+
+def test_connect_respects_heartbeat_from_url(monkeypatch: Any):
+    params = _params_used(
+        monkeypatch, "amqp://guest:guest@localhost:5672/?heartbeat=30"
+    )
+    assert params.heartbeat == EXPECTED_CUSTOM_HEARTBEAT
+
+
+def test_connect_preserves_host_and_port_from_url(monkeypatch: Any):
+    params = _params_used(monkeypatch, "amqp://guest:guest@rabbitmq:5672/")
+    assert params.host == "rabbitmq"
+    assert params.port == DEFAULT_AMQP_PORT

@@ -203,6 +203,142 @@ def test_process_message_image_all_describe_fail():
     assert "vision down" in result["error"]
 
 
+def test_process_message_video_caption_fallback_chain_with_screen_text():
+    # When media is reused from disk there's no media_info, so dl["caption"]
+    # comes back empty -- the message-level `caption` (not just `title`,
+    # which is only an 80-char reserve) must still reach the model. Measured:
+    # 21 of 24 silent-video documents lost the caption, and all 21 were
+    # exactly the disk-reused ones.
+    message = {
+        "ig_pk": "9",
+        "title": "titulo curto",
+        "caption": "A LEGENDA COMPLETA com o passo a passo que importa",
+    }
+    captured: dict[str, Any] = {}
+
+    def fake_ingest(text: str, **kwargs: Any) -> dict[str, Any]:
+        captured["text"] = text
+        return {"ok": True, "document_id": 1}
+
+    result = mod.process_message(
+        message,
+        download=lambda m: {"ok": True, "filepaths": ["/tmp/x.mp4"]},  # no caption
+        transcribe=lambda fp: {"ok": True, "text": "", "language": "pt"},
+        describe=None,
+        read_screen=lambda fp: {"ok": True, "text": "TEXTO NA TELA"},
+        ingest=fake_ingest,
+    )
+    assert result["status"] == "done"
+    assert "LEGENDA COMPLETA" in captured["text"]
+
+
+def test_process_message_video_caption_fallback_chain_without_screen_text():
+    message = {
+        "ig_pk": "9",
+        "title": "titulo curto",
+        "caption": "A LEGENDA COMPLETA com o passo a passo que importa",
+    }
+    captured: dict[str, Any] = {}
+
+    def fake_ingest(text: str, **kwargs: Any) -> dict[str, Any]:
+        captured["text"] = text
+        return {"ok": True, "document_id": 1}
+
+    result = mod.process_message(
+        message,
+        download=lambda m: {"ok": True, "filepaths": ["/tmp/x.mp4"]},
+        transcribe=lambda fp: {"ok": True, "text": "", "language": "pt"},
+        describe=None,
+        read_screen=None,
+        ingest=fake_ingest,
+    )
+    assert result["status"] == "done"
+    assert "LEGENDA COMPLETA" in captured["text"]
+
+
+def test_process_message_old_message_without_caption_falls_back_to_title():
+    # A message queued before this fix has no "caption" key at all -- the
+    # title must still serve as the last-resort reserve.
+    message = {"ig_pk": "9", "title": "titulo curto"}
+    captured: dict[str, Any] = {}
+
+    def fake_ingest(text: str, **kwargs: Any) -> dict[str, Any]:
+        captured["text"] = text
+        return {"ok": True, "document_id": 1}
+
+    result = mod.process_message(
+        message,
+        download=lambda m: {"ok": True, "filepaths": ["/tmp/x.mp4"]},
+        transcribe=lambda fp: {"ok": True, "text": "", "language": "pt"},
+        describe=None,
+        read_screen=lambda fp: {"ok": True, "text": "TEXTO NA TELA"},
+        ingest=fake_ingest,
+    )
+    assert result["status"] == "done"
+    assert "titulo curto" in captured["text"]
+
+
+def test_process_message_mixed_carousel_only_images_reach_vision_model():
+    # A mixed carousel (photos AND videos) gets its `kind` from the first
+    # file. Starting with a photo, the post used to send every file --
+    # including .mp4s -- to the vision model, which 400s on video the same
+    # way it does on an unsupported image format.
+    message = {"ig_pk": "4", "title": "Post misto"}
+    mixed = ["/tmp/a.jpg", "/tmp/b.mp4", "/tmp/c.jpg", "/tmp/d.mp4"]
+    seen: list[str] = []
+
+    def describe_images_only(fp: str) -> dict[str, Any]:
+        seen.append(fp)
+        return {"ok": True, "conteudo_principal": f"desc {fp}", "categoria": "receita"}
+
+    result = mod.process_message(
+        message,
+        download=lambda m: {"ok": True, "filepaths": list(mixed)},
+        transcribe=None,
+        describe=describe_images_only,
+        ingest=lambda *a, **k: {"ok": True, "document_id": 99},
+    )
+    assert result["status"] == "done"
+    assert seen == ["/tmp/a.jpg", "/tmp/c.jpg"]  # the .mp4s were never tried
+
+
+def test_process_message_mixed_carousel_one_bad_photo_does_not_abort_others():
+    # The same structural bug that let one malformed post take down an
+    # entire collection in the listing: one failing description must not
+    # cost the photos that already paid for a successful describe() call.
+    message = {"ig_pk": "5", "title": "Post misto"}
+    mixed = ["/tmp/a.jpg", "/tmp/b.jpg"]
+
+    def describe_one_bad(fp: str) -> dict[str, Any]:
+        if fp == "/tmp/a.jpg":
+            return {"ok": False, "error": "vision failed: 400"}
+        return {"ok": True, "conteudo_principal": "sobrevivi", "categoria": "receita"}
+
+    result = mod.process_message(
+        message,
+        download=lambda m: {"ok": True, "filepaths": list(mixed)},
+        transcribe=None,
+        describe=describe_one_bad,
+        ingest=lambda *a, **k: {"ok": True, "document_id": 1},
+    )
+    assert result["status"] == "done"
+
+
+def test_process_message_carousel_all_images_fail_names_the_count():
+    message = {"ig_pk": "6", "title": "Post misto"}
+    mixed = ["/tmp/a.jpg", "/tmp/b.jpg", "/tmp/c.jpg"]
+
+    result = mod.process_message(
+        message,
+        download=lambda m: {"ok": True, "filepaths": list(mixed)},
+        transcribe=None,
+        describe=lambda fp: {"ok": False, "error": "vision failed: 400"},
+        ingest=lambda *a, **k: {"ok": True},
+    )
+    assert result["status"] == "error"
+    assert "3" in result["error"]
+
+
 def test_existing_media_empty_when_dir_missing(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):

@@ -152,6 +152,25 @@ def test_parse_items_tolerant_skips_bad_item_keeps_others():
     assert discarded == [{"bad": True, "pk": 2}]
 
 
+def test_parse_items_tolerant_broken_on_discard_does_not_cost_the_page():
+    # on_discard failing (e.g. disk full while writing the JSONL) must never
+    # cost the rest of the page -- that would trade 500 posts for a log line.
+    def extract(raw: dict[str, Any]) -> Any:
+        if raw.get("bad"):
+            raise ValueError("broken item")
+        return raw["pk"]
+
+    def _broken_on_discard(_raw: dict[str, Any], _exc: Exception) -> None:
+        raise OSError("disk full")
+
+    items = ig_sync.parse_items_tolerant(
+        [{"pk": 1}, {"bad": True, "pk": 2}, {"pk": 3}],
+        extract,
+        on_discard=_broken_on_discard,
+    )
+    assert items == [1, 3]
+
+
 def test_registrar_descarte_writes_jsonl(tmp_path: Path):
     destino = tmp_path / "descartados.jsonl"
     ig_sync.registrar_descarte({"pk": 7}, ValueError("boom"), caminho=str(destino))
@@ -181,3 +200,104 @@ def test_sync_saved_posts_publishes_and_counts():
     assert result["skipped_existing"] == 1
     assert result["total"] == total_media_items
     assert [m["ig_pk"] for m in published] == ["1"]
+
+
+def test_sync_saved_posts_reports_discarded_count_from_client():
+    # The old return shape ({ok, published, skipped_existing, total}) was
+    # identical between "you have 3111 posts" and "you just lost 507" -- the
+    # only signal was a smaller `total`, with nothing to compare it against.
+    # `descartados` comes from the client's own counter (tolerant_client_class
+    # in production; 0 for a plain client, like this fake or the legacy path).
+    class FakeClientWithDiscards:
+        descartados: list[Any] = [{"ig_pk": "99"}]  # already had 1 before sync
+
+        def saved_posts(self) -> list[Any]:
+            return [_media(1)]
+
+    result = ig_sync.sync_saved_posts(
+        FakeClientWithDiscards(), existing_pks=set(), publish_fn=lambda _m: None
+    )
+    # No new discard happened during this call (the counter doesn't grow),
+    # so the delta reported must be 0, not the client's total.
+    assert result["descartados"] == 0
+
+
+class _FakeCollection:
+    def __init__(self, cid: int, name: str, catch_all: bool = False) -> None:
+        self.id = cid
+        self.name = name
+        self.type = "ALL_MEDIA_AUTO_COLLECTION" if catch_all else "MEDIA"
+
+
+class _MultiCollectionClient:
+    """The catch-all comes FIRST, the way Instagram actually returns it --
+    exercises that `saved_posts_by_collection` reorders it to last."""
+
+    descartados: list[Any] = []
+
+    def __init__(self) -> None:
+        self._cols = [
+            _FakeCollection(0, "All posts", catch_all=True),
+            _FakeCollection(1, "Dev"),
+            _FakeCollection(2, "Receitas"),
+        ]
+        self._medias = {
+            0: [_media(100), _media(200), _media(300)],  # every saved post
+            1: [_media(100)],  # 100 belongs to Dev
+            2: [_media(200)],  # 200 belongs to Receitas
+        }
+
+    def collections(self) -> list[_FakeCollection]:
+        return self._cols
+
+    def collection_medias(self, cid: int, amount: int = 0) -> list[Any]:
+        return self._medias[cid]
+
+
+EXPECTED_PUBLISHED = 3
+EXPECTED_COLLECTIONS = 3
+
+
+def test_saved_posts_by_collection_enumerates_catch_all_last():
+    names = [
+        name for name, _ in ig_sync.saved_posts_by_collection(_MultiCollectionClient())
+    ]
+    assert names[-1] is None
+    assert set(names[:-1]) == {"Dev", "Receitas"}
+
+
+def test_sync_saved_posts_named_collection_wins_despite_incremental_publish():
+    published: list[dict[str, Any]] = []
+    ig_sync.sync_saved_posts(
+        _MultiCollectionClient(), existing_pks=set(), publish_fn=published.append
+    )
+    by_pk = {m["ig_pk"]: m["collection_name"] for m in published}
+    assert by_pk["100"] == "Dev"
+    assert by_pk["200"] == "Receitas"
+    assert by_pk["300"] is None  # only ever seen in the catch-all
+    assert len(published) == EXPECTED_PUBLISHED  # not 5: dedup across collections
+
+
+def test_sync_saved_posts_progress_fn_reports_one_event_per_collection():
+    events: list[dict[str, Any]] = []
+    ig_sync.sync_saved_posts(
+        _MultiCollectionClient(),
+        existing_pks=set(),
+        publish_fn=lambda _m: None,
+        progress_fn=events.append,
+    )
+    assert len(events) == EXPECTED_COLLECTIONS
+    assert all("published_total" in e for e in events)
+    assert events[-1]["published_total"] == EXPECTED_PUBLISHED
+
+
+def test_sync_saved_posts_reprocessar_ignores_existing_pks():
+    published: list[dict[str, Any]] = []
+    result = ig_sync.sync_saved_posts(
+        _MultiCollectionClient(),
+        existing_pks={"100", "200", "300"},
+        publish_fn=published.append,
+        reprocessar=True,
+    )
+    assert result["published"] == EXPECTED_PUBLISHED
+    assert len(published) == EXPECTED_PUBLISHED

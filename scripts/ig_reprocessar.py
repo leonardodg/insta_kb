@@ -41,6 +41,34 @@ BACKUP.mkdir(parents=True, exist_ok=True)
 APLICAR = "--aplicar" in sys.argv
 IDS = [int(a) for a in sys.argv[1:] if a.isdigit()]
 
+_CLIENTE: list[Any] = []
+
+
+def _cliente() -> Any:
+    """Um cliente do instagrapi, criado na primeira vez que fizer falta.
+
+    Preguiçoso porque a maioria dos reprocessamentos não precisa da rede, e
+    fazer login no início cobraria requisição de quem não vai usá-la.
+
+    **A falha é lembrada.** Com o IG_SESSIONID expirado cada tentativa custa
+    trinta redirecionamentos até morrer em `TooManyRedirects`; repetir isso uma
+    vez por documento transformaria um lote de 76 numa tempestade de milhares
+    de requisições contra a página de login -- que é exatamente o padrão que
+    faz a conta ser bloqueada de vez. Uma tentativa, e o resto do lote segue
+    com o título como reserva.
+    """
+    if _CLIENTE:
+        if _CLIENTE[0] is None:
+            raise RuntimeError("sessão do Instagram indisponível (falhou antes)")
+        return _CLIENTE[0]
+    try:
+        _CLIENTE.append(ig_sync.make_client())
+    except Exception:
+        _CLIENTE.append(None)
+        raise
+    return _CLIENTE[0]
+
+
 e = create_engine(os.environ["DATABASE_URL"])
 COLS = (
     "id, ig_pk, type, title, summary, tutorial, objectives, tags, "
@@ -132,6 +160,24 @@ for did in IDS:
         if tela:
             conteudo = f"{conteudo}\n\n--- texto na imagem ---\n{tela}".strip()
         doc_type, lang = "image", "pt"
+
+    # A LEGENDA. Sem ela este script reproduzia o defeito que o reprocessamento
+    # existe para consertar: a mídia vem do disco, não há `media_info`, e o
+    # texto ia para o modelo sem o que o autor escreveu. Medido em 2026-08-19:
+    # em 21 de 24 documentos de vídeo mudo a legenda nunca chegou ao LLM.
+    #
+    # Uma requisição por post, e só aqui -- o `media_info` é a chamada
+    # autenticada que o resto do reprocessamento faz questão de evitar. Vale
+    # porque é exatamente o material que falta; falhar nela não pode custar o
+    # documento, então o título do banco fica de reserva.
+    legenda = ""
+    try:
+        legenda = (getattr(_cliente(), "media_info")(pk).caption_text or "").strip()
+    except Exception as exc:
+        print(f"  media_info falhou ({exc}); usando o título como reserva")
+        legenda = (d.get("title") or "").strip()
+    if legenda:
+        conteudo = f"{conteudo}\n\n--- legenda ---\n{legenda}".strip()
 
     conteudo = ig_worker.strip_cta(conteudo)
     if not conteudo.strip():
