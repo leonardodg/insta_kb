@@ -761,3 +761,41 @@ docs`, `mkdocs build --strict`, assert de que só HTML/CSS/JS sobe);
 3. **Último passo do plano (pedido seu): testes reais de criação de
    vídeo**, após os commits/PR desta branch.
 4. graphify (Task 9 Step 4, opcional) — não solicitado; Mermaid cobre.
+
+---
+
+## 2026-10-07 (fim de sessão) — review do refactor SOLID + fechamento
+
+Review de código dos 9 commits do refactor SOLID (fatiar `ig_worker.py`/
+`knowledge.py`, contratos tipados, decoupling api↔mcp, registry LLM):
+**aprovado**. Os dois splits grandes foram confirmados como moves puros
+(comparação de AST função por função — zero lógica perdida, duplicada ou
+alterada), o mutex de GPU (`infra/gpu_lock/`) saiu intocado, e o worker em
+produção já estava rodando o código novo havia ~2,5h sem erro nenhum
+enquanto drenava a fila real.
+
+Fixes aplicados a partir das ressalvas do review (commit `419059a`):
+- `core/contracts.py`: `ErrResult` ganha `stage: NotRequired[str]` — sem
+  isso, o dia em que algum endpoint devolver um erro com esse campo
+  (`core/knowledge/ingest.py` já produz esse shape), o FastAPI filtra a
+  chave da resposta sem avisar ninguém.
+- `mcp_server/server.py`: `MCP_TRANSPORT=http` (aceito como alias) não
+  setava o path `/mcp` — só `streamable-http` setava. `.mcp.json`
+  apontando pra `.../mcp` daria 404 nesse transporte específico.
+- `.github/workflows/docs.yml`: o step de build usava `uv run mkdocs
+  build` sem `--only-group docs`, anulando o isolamento do step anterior
+  (nunca rodou de verdade — só dispara em push pra main).
+- Contagem de endpoints corrigida (10→13) em README/ARQUITETURA.
+
+Ambiente: `uv sync` precisa de `--extra dev` agora pra trazer
+pytest/ruff/pyright/mkdocs de volta (o grupo `dev` virou optional-dependency,
+não dependency-group default) — achado ao tentar rodar a suíte do
+minimax-video-factory nesta mesma sessão, registrado aqui porque o
+padrão pode se repetir.
+
+**Pendência real, única:** reiniciar a sessão do OpenCode (ação sua) pra
+`insta-kb` (agora HTTP, `:8849/mcp`) e a instância host do minimax
+reconectarem — sem isso, o mutex de GPU não protege chamadas feitas por
+essa sessão específica (já causou um incidente real documentado no
+HANDOFF do minimax-video-factory: render + transcrição simultâneos, um
+post falhou por timeout no Ollama).
