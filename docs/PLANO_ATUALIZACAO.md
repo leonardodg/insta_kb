@@ -103,6 +103,14 @@ mesmos bind mounts.
    insta_kb → MCPs → testes → fila → docs → diagramas.
 3. Commits pendentes commitados ANTES de começar (Task 0).
 4. `av==18.1.0` nos dois; `fastmcp>=4.0.11` nos dois; `instagrapi>=3.0.20`.
+   **Desvio registrado na execução (Task 1):** o floor `instagrapi>=3.0.20`
+   quebra o lock (instagrapi 3.0.20 pinna `pydantic==2.12.5` no marker
+   Android × `pydantic>=2.13.4` do projeto) → adicionado
+   `[tool.uv] environments = ["sys_platform != 'android'"]` (fix sugerido
+   pelo uv; projeto é servidor Linux). Também registrado: telemetry
+   default-on do FastAPI 0.142 verificado inerte (`enabled()==False` sem
+   `OTEL_*` — decisão: manter default); floor `fastapi[standard]>=0.142.2`;
+   `uv.lock` revision 5 exige uv ≥ 0.12 nos builds Docker (Tasks 3/4).
 5. ComfyUI → v0.39.1 com imagem de backup; pesos só com OK explícito.
 6. GPU serializada (ver Global Constraints).
 7. Skills obrigatórias: TDD, requesting-code-review, verification-before-
@@ -117,7 +125,7 @@ mesmos bind mounts.
 | Task | Descrição | Status | Evidência / HANDOFF |
 |---|---|---|---|
 | 0 | Commits pendentes + baseline | ✅ | branch `update/deps-2026-10` nos 2 repos; baseline 168+9; commits insta_kb `e2095eb`+`9aaa257`, minimax `44b6406`+`4b34bd2`+`376e6ae` |
-| 1 | Deps insta_kb | ⏳ | |
+| 1 | Deps insta_kb | ✅ | `av==18.1.0`+`instagrapi>=3.0.20`+`fastmcp>=4.0.11`+`fastapi[standard]>=0.142.2`; lock uvicorn 0.54.0/ruff 0.16.10/pyright 1.1.414; 168 passed + smoke decode OK; review aplicado; `58e8093` |
 | 2 | Deps minimax | ⏳ | |
 | 3 | ComfyUI + nodes + pesos | ⏳ | |
 | 4 | Docker insta_kb (Parte B) | ⏳ | |

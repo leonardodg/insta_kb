@@ -20,7 +20,7 @@ versionadas em `docs/PLANO_ATUALIZACAO.md` (este repo) e no minimax-video-factor
 | Task | Descrição | Status | Evidência |
 |---|---|---|---|
 | 0 | Commits pendentes + baseline + cópias do plano | ✅ | baseline `168 passed` (+9 no minimax); commits `e2095eb` (fail-soft+export), `9aaa257` (plano) |
-| 1 | Deps insta_kb | ⏳ | |
+| 1 | Deps insta_kb | ✅ | `av==18.1.0`, `instagrapi>=3.0.20`, `fastmcp>=4.0.11`, `fastapi[standard]>=0.142.2`; lock: uvicorn 0.54.0, ruff 0.16.10, pyright 1.1.414, pydantic 2.13.5; suíte 168 passed + smoke `decode_audio` OK; review "with fixes" aplicado (telemetry verificado, floor fastapi ajustado); commit `58e8093` |
 | 2 | Deps minimax | ⏳ | |
 | 3 | ComfyUI v0.39.1 + nodes + pesos | ⏳ | |
 | 4 | Docker insta_kb (Parte B) | ⏳ | |
@@ -32,6 +32,31 @@ versionadas em `docs/PLANO_ATUALIZACAO.md` (este repo) e no minimax-video-factor
 
 Regra de GPU durante toda a execução: 1 job (render/transcrição/Ollama) por
 vez; `av==18.1.0` fixo nos 2 repos; nenhum download de peso sem OK.
+
+### Decisões registradas na Task 1 (deps insta_kb)
+
+- **`[tool.uv] environments = ["sys_platform != 'android'"]`** (desvio do
+  plano, obrigatório): `instagrapi>=3.0.20` trava `pydantic==2.12.5` no
+  marker Android, conflitando com `pydantic>=2.13.4` do projeto — o lock
+  falhava para todo ambiente. Servidor Linux only; Android nunca é alvo de
+  deploy. É a solução sugerida pelo próprio uv. Efeito: tentativa de
+  resolver em Android falha alto em vez de silenciosamente.
+- **Telemetry do FastAPI 0.142 (default-on) — decisão: manter o default.**
+  Verificado em runtime nesta sessão: sem `OTEL_*` no ambiente,
+  `app._native_telemetry.enabled()` → **False** (middleware nem cria spans,
+  zero overhead por request) — `.env`/`.env.example`/shell não têm
+  `OTEL_*`. Se alguém definir `OTEL_EXPORTER_OTLP_ENDPOINT` depois, é
+  exatamente a intenção (exportar) que o auto_configure atende. Nenhuma
+  mudança de código.
+- **`fastapi[standard]>=0.142.2`** (floor ajustado após code review): o
+  floor antigo `>=0.141.1` permitiria re-lock voltar para 0.141.1.
+- **`uv.lock` revision 3→5** (novo campo `supported-markers`): qualquer
+  imagem Docker/venv que consuma este lock precisa de **uv ≥ 0.12.x** —
+  checar nos builds das Tasks 3/4.
+- **`agent-detector`** entrou no venv via `fastapi-cloud-cli` (extra
+  `fastapi[standard]`), não é importado pelo app, pip-audit limpo — se o
+  next reviewer de supply-chain estranhar, é daí. Escape hatch:
+  `fastapi[standard-no-fastapi-cloud-cli]`.
 
 ## ✅ Commit real em 2026-10-06: `a773f2c` em `migrate/instagram-kb-from-video-factory`
 
@@ -360,6 +385,14 @@ vídeo da fila. Corrigido: `av==15.1.0` (a mais antiga com wheel para
 Python 3.14, que ainda tem o parâmetro). Testado de verdade com
 `faster-whisper` transcrevendo um `.mp4` sintético (CPU, para não disputar
 a GPU que um render real do video-factory ocupava nesse instante).
+
+> **Atualização 2026-10-07 (sessão do plano de atualização):** o pin subiu
+> para **`av==18.1.0`** — a mais recente que funciona. Teste real em venv
+> py3.14 com decode de wav: 15.1.0/17.1.0/18.0.0/18.1.0 ✅ ·
+> 19.0.0/19.0.1 ❌ (`TypeError: metadata_errors` removido). `faster-whisper`
+> latest continua 1.2.1 sem fix (declara `av>=11` sem teto — o pin é o que
+> protege). Mesmo pin aplicado no minimax-video-factory (ele nem declarava
+> `av`).
 
 **Worker parado depois da verificação** — processar as 329 mensagens reais
 seria uma rodada de produção, não uma verificação; fica para quando o
