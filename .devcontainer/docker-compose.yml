@@ -82,7 +82,9 @@ services:
   # not solved by this container, a separate concern from the networking
   # fix here.
   ollama:
-    image: ollama/ollama
+    # Pinado na versão do host (0.32.9): o latest (0.40+) migra o store
+    # pra manifests-v2 e FALHA com o mount :ro abaixo (mkdir read-only).
+    image: ollama/ollama:0.32.9
     restart: unless-stopped
     networks: [insta-kb-net]
     environment:
