@@ -26,14 +26,40 @@ versionadas em `docs/PLANO_ATUALIZACAO.md` (este repo) e no minimax-video-factor
 | 4 | Docker insta_kb (Parte B) | ⏳ | |
 | 5 | MCPs do OpenCode | ⏳ | |
 | 6 | Matriz de testes | ⏳ | |
-| 7 | Fila do insta_kb (329 msgs) | ⏳ | |
+| 7 | Fila do insta_kb (329 msgs) | ✅ (parada proposital) | drenagem parcial 12:56–13:05: 329→**322** ready, 0 dead, **7 ingests** (docs 3713→3719), 0 errors; ver seção abaixo |
 | 8 | Documentação | ⏳ | |
 | 9 | Diagramas | ⏳ | |
 
 Regra de GPU durante toda a execução: 1 job (render/transcrição/Ollama) por
 vez; `av==18.1.0` fixo nos 2 repos; nenhum download de peso sem OK.
 
-### Decisões registradas na Task 1 (deps insta_kb)
+### Task 7 (fila ig.saved) — drenagem proposital parcial, 2026-10-07
+
+Decisão do usuário (pergunta do plano, Step 3): **parar após validar**, não
+drenar tudo de uma vez — a fila pode ser retomada depois. A Task 7 consumia
+"stack Docker (Task 4)/API (Task 4)", mas o caminho provado do HANDOFF
+(`uv run python -m workers.ig_worker`, verificado em "Verificação
+end-to-end" abaixo) funcionou sem a API 8084: **worker no host**, desvio
+registrado. A outra sessão da Task 4 já adicionou `ffmpeg + cuda libs pro
+worker` no devcontainer (`02140f1`) — na próxima rodada subir em container.
+
+- **Pré-check de GPU:** ComfyUI segurava ~10 GB ociosos com modelos em
+  cache; liberados via `POST :8188/free {"unload_models":true,...}`
+  (VRAM 10668→908 MiB). Whisper `small` em cuda+fp16 coube de boa.
+- **Execução 12:56:11→13:05:36** (~9 min): 7 posts e2e completos
+  (download IG → whisper cuda ~11s → 2× Ollama → ingest KB), cadência
+  ~70s/post, **0 erros, 0 dead**. Docs 3713→3719; total KB **3411**;
+  doc mais recente com summary+tutorial+transcription (pipeline inteiro).
+- **Parada:** `SIGTERM` no pid — graceful; unacked voltou p/ ready.
+  Fila final: **322 ready, 0 unacked, 0 consumers, 0 dead.**
+- **Retomar:** `cd ~/localhost/insta_kb && nohup uv run python -m
+  workers.ig_worker > /tmp/opencode/ig_worker.log 2>&1 &` (GPU livre
+  primeiro: conferir `nvidia-smi`; regra de 1 job GPU/vez — a fila drena
+  ~6h30 e nesse período renders do minimax ficam em espera).
+- Monitorar sem API: `rabbitmqctl list_queues name messages consumers`
+  + `grep ingested /tmp/opencode/ig_worker.log` + MCP `ig_queue_status`.
+
+
 
 - **`[tool.uv] environments = ["sys_platform != 'android'"]`** (desvio do
   plano, obrigatório): `instagrapi>=3.0.20` trava `pydantic==2.12.5` no
