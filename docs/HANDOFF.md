@@ -799,3 +799,22 @@ reconectarem — sem isso, o mutex de GPU não protege chamadas feitas por
 essa sessão específica (já causou um incidente real documentado no
 HANDOFF do minimax-video-factory: render + transcrição simultâneos, um
 post falhou por timeout no Ollama).
+
+### Achado adicional (teste final de endpoints): `/knowledge/ask` pode travar a API inteira
+
+Testando todos os endpoints REST manualmente: um `POST /knowledge/ask`
+deixou `/healthcheck` e qualquer outro endpoint **sem resposta nenhuma**
+(`curl` com timeout, connection refused) por alguns minutos, mesmo
+`/healthcheck` sendo um handler `async def` sem relação com a pergunta.
+Suspeita: `knowledge.ask` chama o LLM de forma síncrona dentro de um
+endpoint `async def`, e o uvicorn roda **1 processo, sem `--workers`**
+(ver `.devcontainer/docker-compose.yml`) — uma chamada síncrona longa
+trava a única thread do event loop, e NADA mais responde até ela
+terminar. Depois de alguns minutos o processo voltou sozinho (CPU 0%,
+Ollama sem modelo carregado — a chamada tinha terminado). Não travou de
+vez, mas qualquer outra coisa que dependa da API (incluindo
+`/gpu/status`, usado pelo mutex!) fica bloqueada enquanto isso. Não
+corrigido nesta sessão — registrar como item real pro backlog do
+`docs/SOLID_AUDIT.md` ou equivalente: handlers que chamam LLM síncrono
+deveriam usar `run_in_threadpool`/`asyncio.to_thread`, ou o uvicorn
+precisa de mais de 1 worker.
