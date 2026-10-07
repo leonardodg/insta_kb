@@ -29,7 +29,7 @@ versionadas em `docs/PLANO_ATUALIZACAO.md` (este repo) e no minimax-video-factor
 | 7 | Fila do insta_kb (329 msgs) | ✅ (parada proposital) | drenagem parcial 12:56–13:05: 329→**322** ready, 0 dead, **7 ingests** (docs 3713→3719), 0 errors; ver seção abaixo |
 | 8 | Documentação | ⏳ | |
 | 9 | Diagramas | ⏳ | |
-| 10 | Auditoria SOLID (avaliação) | ⏳ | design: `docs/superpowers/specs/2026-10-07-solid-audit-task-design.md` |
+| 10 | Auditoria SOLID (avaliação) | ✅ | relatório `docs/SOLID_AUDIT.md` (314 l., 0 crítico); veredito **ciclo futura**; ver seção abaixo |
 
 Regra de GPU durante toda a execução: 1 job (render/transcrição/Ollama) por
 vez; `av==18.1.0` fixo nos 2 repos; nenhum download de peso sem OK.
@@ -610,3 +610,31 @@ re-baixar nada. `OLLAMA_URL` dos 3 serviços trocado pra
 Dois servidores Ollama agora coexistem (host + container) — mesma
 disputa de GPU que o mutex (`infra/gpu_lock`) já existe pra resolver, não
 um problema novo. **Em teste no momento deste registro.**
+
+---
+
+## 2026-10-07 — Task 10 ✅: auditoria SOLID (só avaliação)
+
+Entregável: **`docs/SOLID_AUDIT.md`** (314 linhas) — nenhum código
+alterado (design: `docs/superpowers/specs/2026-10-07-solid-audit-task-design.md`).
+
+Método: radon cc/mi + vulture (0 dead code) + grafo AST (35 módulos,
+**0 ciclos**) + checklist S/O/L/I/D manual. Métricas: 38 funções cc≥6;
+piores `ig_worker._build_image_document` cc=**20**, `vault.write_markdown_copy`
+cc=19, `process_message` cc=18; MI pior `ig_worker.py`=**19**. Nota de
+tooling: `except ValueError, TypeError:` (ig_worker:978, llm/client:671,
+queue:133) é sintaxe **PEP 758 do Python 3.14** — válida aqui, mas quebra
+radon/vulture via `uvx` (Python <3.14); contornado com `uv run --with`.
+
+Achados: **0 crítico**; 5 importantes (SRP: `ig_worker` ~12
+responsabilidades / `knowledge.py` 5 domínios; OCP: dupla
+`if provider == "ollama"/"openai-compatible"` em 2 pontos sem registry;
+ISP: 0 Protocol, contrato `dict[str,Any]` universal, `save_document` com
+16 params; DIP: REST delega 9 endpoints ao mcp_server por re-export
+acidental) + 7 menores; backlog de 12 itens ordenado por severidade ×
+esforço (§5).
+
+**Veredito go/no-go: `ciclo futura`** — nada crítico; itens 1–5 do
+backlog entram no próximo ciclo **antes** de novos tipos de mídia ou
+provedores LLM (`ig_worker` + `knowledge` concentram 53% das funções
+cc≥6).
